@@ -1,12 +1,12 @@
 import logging
+from os import listdir
+import json
+import asqlite
 
 import discord
 from discord.ext import commands
 import asyncio
-from os import listdir
-import time
-import csv
-import json
+
 
 logger = logging.getLogger("bot.main")
 
@@ -14,7 +14,7 @@ logger = logging.getLogger("bot.main")
 logging.getLogger("discord.gateway").setLevel(30)
 
 logging.basicConfig(
-    filename="../logs/dpy.log",
+    filename="../logs/rlis.log",
     encoding="utf-8",
     datefmt="%Y-%m-%d %H:%M:%S",
     format="[%(asctime)s] [%(levelname)-8s] %(name)s: %(message)s",
@@ -50,6 +50,12 @@ class RLIS_Bot(commands.Bot):
             except Exception as e:
                 logger.error(f"Failed to load {cog} cog ({type(e).__name__}: {e})")
 
+        # Create a connection pool for future database queries (including those in cogs)
+        self.pool = await asqlite.create_pool("../data/rlis_data.db")
+        logger.info(f"Established connection pool with database")
+
+
+
 
 # Create bot instance and initialise slash command tree
 bot = RLIS_Bot(command_prefix=PREFIX, intents=intents)
@@ -63,7 +69,7 @@ async def on_ready():
     for guild in bot.guilds:
         logger.debug(f"Bot present in guild {guild.name} ({guild.id})")
 
-    print("Connected.")
+    print("Connected")
 
 
 # Sync all slash commands in current guild
@@ -73,7 +79,7 @@ async def synclocal_rlis(ctx):
     logger.debug(f"/synclocal_rlis used by {ctx.author.id}")
     await tree.sync(guild=ctx.guild)
     logger.info(f"Command tree synced in guild {ctx.guild.name} ({ctx.guild.id})")
-    await ctx.send("Slash commands synced.")
+    await ctx.send("Slash commands synced")
 
 
 # Reload a cog (cog argument need not contain _cog.py)
@@ -83,10 +89,10 @@ async def reload_rlis(ctx, cog):
     try:
         await bot.reload_extension(f"{cog.lower()}_cog")
         logger.info(f"Successfully reloaded {cog.lower()} cog")
-        await ctx.send(f"{cog.lower()}_cog reloaded successfully.")
+        await ctx.send(f"{cog.lower()}_cog reloaded successfully")
     except Exception as e:
         logger.error(f"Failed to reload {cog} cog ({type(e).__name__}: {e})")
-        await ctx.send(f"Failed to reload {cog.lower()}_cog.")
+        await ctx.send(f"Failed to reload {cog.lower()}_cog")
 
 
 # Reload all cogs
@@ -108,7 +114,7 @@ async def reload_all_rlis(ctx):
         if len(failed_cogs) > 0:
             await ctx.send(f"Failed to reloaded cogs:\n\t{",".join(failed_cogs)}")
     else:
-        await ctx.send(f"No cogs to reload.")
+        await ctx.send(f"No cogs to reload")
 
 
 # Ping bot using prefix command
@@ -118,10 +124,25 @@ async def ping_rlis(ctx):
     await ctx.send("Pong!")
 
 # Ping main cog using slash command
-@tree.command(description="Ping main cog.", guild=discord.Object(id=GUILD_ID))
+@tree.command(description="Ping main cog", guild=discord.Object(id=GUILD_ID))
 async def ping_main(interaction: discord.Interaction):
     logger.debug(f"/reload_rlis used by {interaction.user.id}")
     await interaction.response.send_message("Pong!", ephemeral=True)
+
+# Ping the database and return the list of existing tables
+@tree.command(
+    description="Ping the database via the connection pool", guild=discord.Object(id=GUILD_ID)
+)
+async def ping_db(interaction: discord.Interaction):
+    logger.debug(f"/ping_db used by {interaction.user.id}")
+    async with bot.pool.acquire() as con:
+        res = await con.execute("SELECT name FROM sqlite_master")
+        tables = [row[0] for row in await res.fetchall()]
+
+    logger.info(f"Successfully pinged database with {len(tables)} tables")
+    await interaction.response.send_message(
+        f"Tables present in database:\n\t{', '.join(tables)}", ephemeral=True
+    )
 
 
 # Start bot
