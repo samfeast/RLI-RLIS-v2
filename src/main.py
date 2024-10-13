@@ -55,11 +55,10 @@ class RLIS_Bot(commands.Bot):
         logger.info(f"Established connection pool with database")
 
 
-
-
 # Create bot instance and initialise slash command tree
 bot = RLIS_Bot(command_prefix=PREFIX, intents=intents)
 tree = bot.tree
+
 
 # Event called after login is successful
 @bot.event
@@ -123,11 +122,13 @@ async def ping_rlis(ctx):
     logger.debug(f"/ping_rlis used by {ctx.author.id}")
     await ctx.send("Pong!")
 
+
 # Ping main cog using slash command
 @tree.command(description="Ping main cog", guild=discord.Object(id=GUILD_ID))
 async def ping_main(interaction: discord.Interaction):
     logger.debug(f"/reload_rlis used by {interaction.user.id}")
     await interaction.response.send_message("Pong!", ephemeral=True)
+
 
 # Ping the database and return the list of existing tables
 @tree.command(
@@ -143,6 +144,16 @@ async def ping_db(interaction: discord.Interaction):
     await interaction.response.send_message(
         f"Tables present in database:\n\t{', '.join(tables)}", ephemeral=True
     )
+
+
+# Get the current log file
+@tree.command(
+    description="Ping the database via the connection pool", guild=discord.Object(id=GUILD_ID)
+)
+async def get_logs(interaction: discord.Interaction):
+    logger.debug(f"/get_logs used by {interaction.user.id}")
+    with open("../logs/rlis.log", "rb") as log_file:
+        await interaction.response.send_message(file=discord.File(log_file))
 
 
 # Start bot
