@@ -57,6 +57,126 @@ class Reporting(commands.Cog):
                 SUBS.append(row["id"])
         logger.info("Successfully fetched subs from database")
 
+    async def generate_game_id(self, org1, org2, tier, mode):
+        org1_id = ORGS[org1]["id"]
+        org2_id = ORGS[org2]["id"]
+        tier_id = TIERS[tier]
+
+        return f"{max(org1_id, org2_id)}{min(org1_id, org2_id)}{tier_id}{mode}"
+
+    async def validate_report_args(
+        self,
+        tier,
+        winning_org,
+        losing_org,
+        played_previously,
+        winning_players,
+        losing_players,
+        mode,
+    ):
+        game_id = await self.generate_game_id(winning_org, losing_org, tier, mode)
+
+        if mode == 3:
+            async with self.bot.pool.acquire() as con:
+                res = await con.execute(
+                    "SELECT COUNT(game_id) FROM series_log_3v3 WHERE game_id = ?", (game_id,)
+                )
+                # True if the game id has been used before, false otherwise
+                game_id_used = True if (await res.fetchone())[0] > 0 else False
+
+        # Check if the game id has been used before
+        if game_id_used:
+            logger.warning("Report failing as game id is already stored")
+            return "This series has already been reported"
+
+        # Check that the tier exists
+        if tier not in TIERS.keys():
+            logger.warning("Report failing due to invalid tier argument")
+            return "Invalid tier argument supplied"
+
+        # Check that both orgs exist
+        if winning_org not in ORGS.keys() or losing_org not in ORGS.keys():
+            logger.warning("Report failing due to invalid org argument")
+            return "Invalid org argument supplied"
+
+        # Check that the orgs are different
+        if winning_org == losing_org:
+            logger.warning("Report failing due to duplicate org arguments")
+            return "The winning org and losing org cannot be the same"
+
+        # Check that played_previously is not negative
+        if played_previously < 0:
+            logger.warning("Report failing due to invalid played previously argument")
+            return "The played_previously argument cannot be less than 0"
+
+        # Check that the number of players entered is either 0 or 6
+        if len(winning_players) + len(losing_players) not in [0, 6]:
+            logger.warning("Report failing due to incorrect number of player arguments")
+            return "You must supply either 0 or 6 player arguments"
+
+        # Get the players who were expected to play in the match
+        expected_winning_players = []
+        expected_losing_players = []
+        async with self.bot.pool.acquire() as con:
+            res = await con.execute(
+                "SELECT name, org FROM players WHERE tier = ? AND (org = ? OR org = ?)",
+                (tier, winning_org, losing_org),
+            )
+            for row in await res.fetchall():
+                if row[1] == winning_org:
+                    expected_winning_players.append(row[0])
+                else:
+                    expected_losing_players.append(row[0])
+
+        # If all player arguments were filled, check that all entries are either expected,
+        # or registered subs
+        if len(winning_players) + len(losing_players) == 6:
+            for player in winning_players:
+                if player not in expected_winning_players and player not in SUBS:
+                    logger.warning("Report failing due to invalid player argument")
+                    return "At least one player argument is invalid (Did you forget to register a sub?)"
+            for player in losing_players:
+                if player not in expected_losing_players and player not in SUBS:
+                    logger.warning("Report failing due to invalid player argument")
+                    return "At least one player argument is invalid (Did you forget to register a sub?)"
+
+        return None
+
+    # Generate a discord.Embed object to display a result
+    async def generate_report_embed(
+        self,
+        game_id,
+        tier,
+        mode,
+        played_previously,
+        winning_org,
+        losing_org,
+        score,
+        winning_players,
+        losing_players,
+    ):
+        if mode == 3:
+            mode_str = "3v3"
+        elif mode == 2:
+            mode_str = "2v2"
+        elif mode == 1:
+            mode_str = "1v1"
+
+        embed = discord.Embed(title=game_id, color=0x1B68BB)
+        embed.add_field(name="Tier", value=tier, inline=True)
+        embed.add_field(name="Gamemode", value=mode_str, inline=True)
+        embed.add_field(name="Played...day(s) ago", value=played_previously, inline=True)
+        embed.add_field(name="Winner", value=winning_org, inline=True)
+        embed.add_field(name="Loser", value=losing_org, inline=True)
+        embed.add_field(name="Score", value=score, inline=True)
+        embed.add_field(name="Winning Players", value=", ".join(winning_players), inline=True)
+        embed.add_field(name="Losing Players", value=", ".join(losing_players), inline=True)
+        embed.set_footer(text="If this is incorrect, message Res.")
+
+        logger.info(f"Generated report embed for game id {game_id}")
+
+        return embed
+
     # Ping reporting cog
     @app_commands.command(description="Ping the reporting cog")
     @app_commands.guilds(discord.Object(id=GUILD_ID))
@@ -98,60 +218,93 @@ class Reporting(commands.Cog):
         losing_org: str,
         score: Literal["3-0", "3-1", "3-2"],
         played_previously: int = 0,
-        wp1: discord.User = None,
-        wp2: discord.User = None,
-        wp3: discord.User = None,
-        lp1: discord.User = None,
-        lp2: discord.User = None,
-        lp3: discord.User = None,
+        wp1: str = None,
+        wp2: str = None,
+        wp3: str = None,
+        lp1: str = None,
+        lp2: str = None,
+        lp3: str = None,
     ):
         logger.debug(f"/report_3v3 used by {interaction.user.id}")
 
-        if tier not in TIERS.keys():
-            logger.warning("Report failing due to invalid tier argument")
-            await interaction.response.send_message("Invalid tier argument supplied")
-            return
-        if winning_org not in ORGS.keys() or losing_org not in ORGS.keys():
-            logger.warning("Report failing due to invalid org argument")
-            await interaction.response.send_message("Invalid org argument supplied")
-            return
-        if winning_org == losing_org:
-            logger.warning("Report failing due to duplicate org arguments")
-            await interaction.response.send_message(
-                "The winning org and losing org cannot be the same"
-            )
-            return
-        if played_previously < 0:
-            logger.warning("Report failing due to invalid played previously argument")
-            await interaction.response.send_message(
-                "The played_previously argument cannot be less than 0"
-            )
-            return
-
         # Store non None user objects of players
-        winning_players = [p.id for p in [wp1, wp2, wp3] if p is not None]
+        winning_players = [p for p in [wp1, wp2, wp3] if p is not None]
         losing_players = [p for p in [lp1, lp2, lp3] if p is not None]
 
-        if len(winning_players) + len(losing_players) not in [0, 6]:
-            logger.warning("Report failing due to incorrect number of player arguments")
-            await interaction.response.send_message(
-                "You must supply either 0 or 6 player arguments"
-            )
+        # Validate the arguments
+        arg_validation = await self.validate_report_args(
+            tier, winning_org, losing_org, played_previously, winning_players, losing_players, 3
+        )
+
+        # If argument validation failed, arg_validation will contain the error message
+        if arg_validation is not None:
+            await interaction.response.send_message(arg_validation)
             return
 
-        # Query the database to get the players assumed to be in the match
-        # If no players are supplied, those are the players
-        # If all players have been specified, ensure they are either one of the assumed players,
-        # or are a registered sub
+        logger.info("Report arguments validated successfully")
 
-        await interaction.response.send_message("Echo")
+        # If no player arguments were entered, the winning and losing players were as expected
+        if len(winning_players) + len(losing_players) == 0:
+            async with self.bot.pool.acquire() as con:
+                res = await con.execute(
+                    "SELECT name, org FROM players WHERE tier = ? AND (org = ? OR org = ?)",
+                    (tier, winning_org, losing_org),
+                )
+                for row in await res.fetchall():
+                    if row[1] == winning_org:
+                        winning_players.append(row[0])
+                    else:
+                        losing_players.append(row[0])
+
+        game_id = await self.generate_game_id(winning_org, losing_org, tier, 3)
+
+        # Store the result in the database
+        async with self.bot.pool.acquire() as con:
+            await con.execute(
+                """INSERT INTO series_log_3v3(
+                game_id, tier, winning_org, losing_org, 
+                games_won_by_loser, played_previously,
+                wp1, wp2, wp3, lp1, lp2, lp3) 
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    game_id,
+                    tier,
+                    winning_org,
+                    losing_org,
+                    int(score[-1]),
+                    played_previously,
+                    winning_players[0],
+                    winning_players[1],
+                    winning_players[2],
+                    losing_players[0],
+                    losing_players[1],
+                    losing_players[2],
+                ),
+            )
+
+        logger.info(f"Successfully stored series with game id {game_id}")
+
+        # Generate the report embed and send it
+        embed = await self.generate_report_embed(
+            game_id,
+            tier,
+            3,
+            played_previously,
+            winning_org,
+            losing_org,
+            score,
+            winning_players,
+            losing_players,
+        )
+
+        await interaction.response.send_message(embed=embed)
 
     @report_3v3.autocomplete("winning_org")
     @report_3v3.autocomplete("losing_org")
     async def org_autocomplete(self, interaction: discord.Interaction, current: str):
 
         choices = []
-        matched_orgs = [org for org in ORGS.keys() if org.lower().startswith(current.lower())]
+        matched_orgs = [o for o in ORGS.keys() if o.lower().startswith(current.lower())]
         for org in matched_orgs:
             choices.append(app_commands.Choice(name=org, value=org))
 
@@ -161,11 +314,38 @@ class Reporting(commands.Cog):
     @report_3v3.autocomplete("tier")
     async def tier_autocompelte(self, interaction: discord.Interaction, current: str):
         choices = []
-        matched_tiers = [tier for tier in TIERS.keys() if tier.lower().startswith(current.lower())]
+        matched_tiers = [t for t in TIERS.keys() if t.lower().startswith(current.lower())]
         for tier in matched_tiers:
             choices.append(app_commands.Choice(name=tier, value=tier))
 
         logger.debug(f"Generated {len(choices)} tier choices")
+        return choices
+
+    @report_3v3.autocomplete("wp1")
+    @report_3v3.autocomplete("wp2")
+    @report_3v3.autocomplete("wp3")
+    @report_3v3.autocomplete("lp1")
+    @report_3v3.autocomplete("lp2")
+    @report_3v3.autocomplete("lp3")
+    async def players_autocompelte(self, interaction: discord.Interaction, current: str):
+        choices = []
+        matched_players = [p for p in PLAYERS if p.lower().startswith(current.lower())]
+        matched_subs = [p for p in SUBS if p.lower().startswith(current.lower())]
+        for player in matched_subs:
+            if len(choices) > 23:
+                logger.debug("Truncating autocomplete choices (subs)")
+                break
+            else:
+                choices.append(app_commands.Choice(name=f"{player} (SUB)", value=player))
+
+        for player in matched_players:
+            if len(choices) > 23:
+                logger.debug("Truncating autocomplete choices (players)")
+                break
+            else:
+                choices.append(app_commands.Choice(name=player, value=player))
+
+        logger.debug(f"Generated {len(choices)} player choices")
         return choices
 
 

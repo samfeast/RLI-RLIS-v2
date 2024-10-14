@@ -174,6 +174,7 @@ async def view_data(interaction: discord.Interaction, table: str):
 
         logging.info(f"Printing records for {table} table to stdout")
 
+        print(f"Contents of {table} table:")
         for record in records:
             record_str = ""
             for i in range(len(record)):
