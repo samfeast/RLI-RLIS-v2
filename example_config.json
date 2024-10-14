@@ -1,5 +1,32 @@
 {
     "TOKEN": "XXX",
+    "PREFIX": "XXX",
     "GUILD_ID": 0,
-    "PREFIX": "XXX"
+    "ORG_GUILD_IDS": [
+        0,
+        0,
+        0
+    ],
+    "TIERS": {
+        "A": 1,
+        "B": 2,
+        "C": 3
+    },
+    "ORGS": {
+        "A": {
+            "id": 0,
+            "guild_id": 0,
+            "logo_file": "XXX"
+        },
+        "B": {
+            "id": 0,
+            "guild_id": 0,
+            "logo_file": "XXX"
+        },
+        "C": {
+            "id": 0,
+            "guild_id": 0,
+            "logo_file": "XXX"
+        }
+    }
 }
