@@ -22,39 +22,31 @@ TIERS = config["TIERS"]
 ORGS = config["ORGS"]
 ORG_GUILD_IDS = [ORGS[org]["guild_id"] for org in ORGS]
 
-# Filled using get_players() and get_subs()
-PLAYERS = []
-SUBS = []
-
 
 class Reporting(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-        # Run asynchronous setup functions
-        bot.loop.create_task(self.async_init())
-
-    async def async_init(self):
-        logger.debug("Running asynchronous setup functions")
-        await self.get_players()
-        await self.get_subs()
+        self.PLAYERS = []
+        self.SUBS = []
 
     # Query the database for registered players - only done at startup
     async def get_players(self):
-        PLAYERS = []
+        self.PLAYERS = []
         async with self.bot.pool.acquire() as con:
-            res = await con.execute("SELECT id FROM players")
+            res = await con.execute("SELECT name FROM players")
             for row in await res.fetchall():
-                PLAYERS.append(row["id"])
+                self.PLAYERS.append(row["name"])
+
         logger.info("Successfully fetched players from database")
 
     # Query the database for registered subs - done at startup and on /register_sub
     async def get_subs(self):
-        SUBS = []
+        self.SUBS = []
         async with self.bot.pool.acquire() as con:
-            res = await con.execute("SELECT id FROM subs")
+            res = await con.execute("SELECT name FROM subs")
             for row in await res.fetchall():
-                SUBS.append(row["id"])
+                self.SUBS.append(row["name"])
         logger.info("Successfully fetched subs from database")
 
     async def generate_game_id(self, org1, org2, tier, mode):
@@ -80,6 +72,21 @@ class Reporting(commands.Cog):
             async with self.bot.pool.acquire() as con:
                 res = await con.execute(
                     "SELECT COUNT(game_id) FROM series_log_3v3 WHERE game_id = ?", (game_id,)
+                )
+                # True if the game id has been used before, false otherwise
+                game_id_used = True if (await res.fetchone())[0] > 0 else False
+        if mode == 2:
+            async with self.bot.pool.acquire() as con:
+                res = await con.execute(
+                    "SELECT COUNT(game_id) FROM series_log_2v2 WHERE game_id = ?", (game_id,)
+                )
+                # True if the game id has been used before, false otherwise
+                game_id_used = True if (await res.fetchone())[0] > 0 else False
+
+        if mode == 1:
+            async with self.bot.pool.acquire() as con:
+                res = await con.execute(
+                    "SELECT COUNT(game_id) FROM series_log_1v1 WHERE game_id = ?", (game_id,)
                 )
                 # True if the game id has been used before, false otherwise
                 game_id_used = True if (await res.fetchone())[0] > 0 else False
@@ -109,12 +116,12 @@ class Reporting(commands.Cog):
             logger.warning("Report failing due to invalid played previously argument")
             return "The played_previously argument cannot be less than 0"
 
-        # Check that the number of players entered is either 0 or 6
-        if len(winning_players) + len(losing_players) not in [0, 6]:
+        # Check that the number of players entered is either 0 or 6 if the mode is 3v3
+        if mode == 3 and len(winning_players) + len(losing_players) not in [0, 6]:
             logger.warning("Report failing due to incorrect number of player arguments")
             return "You must supply either 0 or 6 player arguments"
 
-        # Get the players who were expected to play in the match
+        # Get the players who could have played from the main rosters
         expected_winning_players = []
         expected_losing_players = []
         async with self.bot.pool.acquire() as con:
@@ -128,17 +135,19 @@ class Reporting(commands.Cog):
                 else:
                     expected_losing_players.append(row[0])
 
-        # If all player arguments were filled, check that all entries are either expected,
-        # or registered subs
-        if len(winning_players) + len(losing_players) == 6:
-            for player in winning_players:
-                if player not in expected_winning_players and player not in SUBS:
-                    logger.warning("Report failing due to invalid player argument")
-                    return "At least one player argument is invalid (Did you forget to register a sub?)"
-            for player in losing_players:
-                if player not in expected_losing_players and player not in SUBS:
-                    logger.warning("Report failing due to invalid player argument")
-                    return "At least one player argument is invalid (Did you forget to register a sub?)"
+        # Check that all entries are either expected, or registered subs
+        for player in winning_players:
+            if player not in expected_winning_players and player not in self.SUBS:
+                logger.warning("Report failing due to invalid player argument")
+                return (
+                    "At least one player argument is invalid (Did you forget to register a sub?)"
+                )
+        for player in losing_players:
+            if player not in expected_losing_players and player not in self.SUBS:
+                logger.warning("Report failing due to invalid player argument")
+                return (
+                    "At least one player argument is invalid (Did you forget to register a sub?)"
+                )
 
         return None
 
@@ -299,8 +308,158 @@ class Reporting(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
+    @app_commands.command(description="Report a 2v2 result")
+    @app_commands.guilds(discord.Object(id=GUILD_ID))
+    async def report_2v2(
+        self,
+        interaction: discord.Interaction,
+        tier: str,
+        winning_org: str,
+        losing_org: str,
+        score: Literal["2-0", "2-1"],
+        wp1: str,
+        wp2: str,
+        lp1: str,
+        lp2: str,
+        played_previously: int = 0,
+    ):
+
+        logger.debug(f"/report_2v2 used by {interaction.user.id}")
+
+        # Store non None user objects of players
+        winning_players = [wp1, wp2]
+        losing_players = [lp1, lp2]
+
+        # Validate the arguments
+        arg_validation = await self.validate_report_args(
+            tier, winning_org, losing_org, played_previously, winning_players, losing_players, 2
+        )
+
+        # If argument validation failed, arg_validation will contain the error message
+        if arg_validation is not None:
+            await interaction.response.send_message(arg_validation)
+            return
+
+        logger.info("Report arguments validated successfully")
+
+        game_id = await self.generate_game_id(winning_org, losing_org, tier, 2)
+
+        # Store the result in the database
+        async with self.bot.pool.acquire() as con:
+            await con.execute(
+                """INSERT INTO series_log_2v2(
+                game_id, tier, winning_org, losing_org, 
+                games_won_by_loser, played_previously,
+                wp1, wp2, lp1, lp2) 
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    game_id,
+                    tier,
+                    winning_org,
+                    losing_org,
+                    int(score[-1]),
+                    played_previously,
+                    winning_players[0],
+                    winning_players[1],
+                    losing_players[0],
+                    losing_players[1],
+                ),
+            )
+
+        logger.info(f"Successfully stored series with game id {game_id}")
+
+        # Generate the report embed and send it
+        embed = await self.generate_report_embed(
+            game_id,
+            tier,
+            2,
+            played_previously,
+            winning_org,
+            losing_org,
+            score,
+            winning_players,
+            losing_players,
+        )
+
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(description="Report a 1v1 result")
+    @app_commands.guilds(discord.Object(id=GUILD_ID))
+    async def report_1v1(
+        self,
+        interaction: discord.Interaction,
+        tier: str,
+        winning_org: str,
+        losing_org: str,
+        score: Literal["2-0", "2-1"],
+        wp1: str,
+        lp1: str,
+        played_previously: int = 0,
+    ):
+
+        logger.debug(f"/report_1v1 used by {interaction.user.id}")
+
+        # Store non None user objects of players
+        winning_players = [wp1]
+        losing_players = [lp1]
+
+        # Validate the arguments
+        arg_validation = await self.validate_report_args(
+            tier, winning_org, losing_org, played_previously, winning_players, losing_players, 1
+        )
+
+        # If argument validation failed, arg_validation will contain the error message
+        if arg_validation is not None:
+            await interaction.response.send_message(arg_validation)
+            return
+
+        logger.info("Report arguments validated successfully")
+
+        game_id = await self.generate_game_id(winning_org, losing_org, tier, 1)
+
+        # Store the result in the database
+        async with self.bot.pool.acquire() as con:
+            await con.execute(
+                """INSERT INTO series_log_1v1(
+                game_id, tier, winning_org, losing_org, 
+                games_won_by_loser, played_previously,
+                wp1, lp1) 
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    game_id,
+                    tier,
+                    winning_org,
+                    losing_org,
+                    int(score[-1]),
+                    played_previously,
+                    winning_players[0],
+                    losing_players[0],
+                ),
+            )
+
+        logger.info(f"Successfully stored series with game id {game_id}")
+
+        # Generate the report embed and send it
+        embed = await self.generate_report_embed(
+            game_id,
+            tier,
+            1,
+            played_previously,
+            winning_org,
+            losing_org,
+            score,
+            winning_players,
+            losing_players,
+        )
+
+        await interaction.response.send_message(embed=embed)
+
     @report_3v3.autocomplete("winning_org")
     @report_3v3.autocomplete("losing_org")
+    @report_2v2.autocomplete("winning_org")
+    @report_2v2.autocomplete("losing_org")
+    @report_1v1.autocomplete("winning_org")
+    @report_1v1.autocomplete("losing_org")
     async def org_autocomplete(self, interaction: discord.Interaction, current: str):
 
         choices = []
@@ -312,7 +471,9 @@ class Reporting(commands.Cog):
         return choices
 
     @report_3v3.autocomplete("tier")
-    async def tier_autocompelte(self, interaction: discord.Interaction, current: str):
+    @report_2v2.autocomplete("tier")
+    @report_1v1.autocomplete("tier")
+    async def tier_autocomplete(self, interaction: discord.Interaction, current: str):
         choices = []
         matched_tiers = [t for t in TIERS.keys() if t.lower().startswith(current.lower())]
         for tier in matched_tiers:
@@ -327,10 +488,20 @@ class Reporting(commands.Cog):
     @report_3v3.autocomplete("lp1")
     @report_3v3.autocomplete("lp2")
     @report_3v3.autocomplete("lp3")
-    async def players_autocompelte(self, interaction: discord.Interaction, current: str):
+    @report_2v2.autocomplete("wp1")
+    @report_2v2.autocomplete("wp2")
+    @report_2v2.autocomplete("lp1")
+    @report_2v2.autocomplete("lp2")
+    @report_1v1.autocomplete("wp1")
+    @report_1v1.autocomplete("lp1")
+    async def players_autocomplete(self, interaction: discord.Interaction, current: str):
+
+        if self.PLAYERS == [] and self.SUBS == []:
+            await self.get_players()
+            await self.get_subs()
+
         choices = []
-        matched_players = [p for p in PLAYERS if p.lower().startswith(current.lower())]
-        matched_subs = [p for p in SUBS if p.lower().startswith(current.lower())]
+        matched_subs = [p for p in self.SUBS if p.lower().startswith(current.lower())]
         for player in matched_subs:
             if len(choices) > 23:
                 logger.debug("Truncating autocomplete choices (subs)")
@@ -338,6 +509,7 @@ class Reporting(commands.Cog):
             else:
                 choices.append(app_commands.Choice(name=f"{player} (SUB)", value=player))
 
+        matched_players = [p for p in self.PLAYERS if p.lower().startswith(current.lower())]
         for player in matched_players:
             if len(choices) > 23:
                 logger.debug("Truncating autocomplete choices (players)")
