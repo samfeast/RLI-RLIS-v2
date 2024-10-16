@@ -2,11 +2,9 @@
     "TOKEN": "XXX",
     "PREFIX": "XXX",
     "GUILD_ID": 0,
-    "ORG_GUILD_IDS": [
-        0,
-        0,
-        0
-    ],
+    "POINTS_3v3": 0,
+    "POINTS_2v2": 0,
+    "POINTS_1v1": 0,
     "TIERS": {
         "A": 1,
         "B": 2,
