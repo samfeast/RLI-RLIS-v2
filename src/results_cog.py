@@ -127,6 +127,7 @@ class Results(commands.Cog):
                         f"/standings failing as no tier was supplied by a non playing user"
                     )
                     await interaction.response.send_message("Tier not found")
+                    return
                 else:
                     tier = data[0]
 
