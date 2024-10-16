@@ -1,14 +1,13 @@
 import logging
 from os import listdir
 import json
-import asqlite
+import time
 
 from typing import Literal
 
 import discord
 from discord.ext import commands
 from discord import app_commands
-import asyncio
 
 
 logger = logging.getLogger("bot.reporting")
@@ -30,7 +29,7 @@ class Reporting(commands.Cog):
         self.PLAYERS = []
         self.SUBS = []
 
-    # Query the database for registered players - only done at startup
+    # Query the database for registered players - done on first use of /report_...
     async def get_players(self):
         self.PLAYERS = []
         async with self.bot.pool.acquire() as con:
@@ -40,7 +39,7 @@ class Reporting(commands.Cog):
 
         logger.info("Successfully fetched players from database")
 
-    # Query the database for registered subs - done at startup and on /register_sub
+    # Query the database for registered subs - done on first use of /report_...
     async def get_subs(self):
         self.SUBS = []
         async with self.bot.pool.acquire() as con:
@@ -139,15 +138,11 @@ class Reporting(commands.Cog):
         for player in winning_players:
             if player not in expected_winning_players and player not in self.SUBS:
                 logger.warning("Report failing due to invalid player argument")
-                return (
-                    "At least one player argument is invalid (Did you forget to register a sub?)"
-                )
+                return "At least one player argument is invalid (Did you forget to register a sub?)"
         for player in losing_players:
             if player not in expected_losing_players and player not in self.SUBS:
                 logger.warning("Report failing due to invalid player argument")
-                return (
-                    "At least one player argument is invalid (Did you forget to register a sub?)"
-                )
+                return "At least one player argument is invalid (Did you forget to register a sub?)"
 
         return None
 
@@ -226,13 +221,13 @@ class Reporting(commands.Cog):
         winning_org: str,
         losing_org: str,
         score: Literal["3-0", "3-1", "3-2"],
-        played_previously: int = 0,
         wp1: str = None,
         wp2: str = None,
         wp3: str = None,
         lp1: str = None,
         lp2: str = None,
         lp3: str = None,
+        played_previously: int = 0,
     ):
         logger.debug(f"/report_3v3 used by {interaction.user.id}")
 
@@ -271,11 +266,12 @@ class Reporting(commands.Cog):
         async with self.bot.pool.acquire() as con:
             await con.execute(
                 """INSERT INTO series_log_3v3(
-                game_id, tier, winning_org, losing_org, 
+                timestamp, game_id, tier, winning_org, losing_org, 
                 games_won_by_loser, played_previously,
                 wp1, wp2, wp3, lp1, lp2, lp3) 
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
+                    round(time.time()),
                     game_id,
                     tier,
                     winning_org,
@@ -348,11 +344,12 @@ class Reporting(commands.Cog):
         async with self.bot.pool.acquire() as con:
             await con.execute(
                 """INSERT INTO series_log_2v2(
-                game_id, tier, winning_org, losing_org, 
+                timestamp, game_id, tier, winning_org, losing_org, 
                 games_won_by_loser, played_previously,
                 wp1, wp2, lp1, lp2) 
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
+                    round(time.time()),
                     game_id,
                     tier,
                     winning_org,
@@ -421,11 +418,12 @@ class Reporting(commands.Cog):
         async with self.bot.pool.acquire() as con:
             await con.execute(
                 """INSERT INTO series_log_1v1(
-                game_id, tier, winning_org, losing_org, 
+                timestamp, game_id, tier, winning_org, losing_org, 
                 games_won_by_loser, played_previously,
                 wp1, lp1) 
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?)""",
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
+                    round(time.time()),
                     game_id,
                     tier,
                     winning_org,
