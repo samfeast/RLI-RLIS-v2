@@ -14,17 +14,20 @@
         "A": {
             "id": 0,
             "guild_id": 0,
-            "logo_file": "XXX"
+            "logo_file": "XXX",
+            "colour": "#000000"
         },
         "B": {
             "id": 0,
             "guild_id": 0,
-            "logo_file": "XXX"
+            "logo_file": "XXX",
+            "colour": "#000000"
         },
         "C": {
             "id": 0,
             "guild_id": 0,
-            "logo_file": "XXX"
+            "logo_file": "XXX",
+            "colour": "#000000"
         }
     }
 }
