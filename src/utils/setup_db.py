@@ -10,21 +10,21 @@ def main():
         cur.execute("CREATE TABLE subs(id, name, platform, platform_id)")
         cur.execute(
             """CREATE TABLE series_log_1v1(
-            game_id, tier, winning_org, losing_org, 
+            timestamp, game_id, tier, winning_org, losing_org, 
             games_won_by_loser, played_previously,
             wp1, lp1, 
             guid_1, guid_2, guid_3)"""
         )
         cur.execute(
             """CREATE TABLE series_log_2v2(
-            game_id, tier, winning_org, losing_org, 
+            timestamp, game_id, tier, winning_org, losing_org, 
             games_won_by_loser, played_previously,
             wp1, wp2, lp1, lp2,
             guid_1, guid_2, guid_3)"""
         )
         cur.execute(
             """CREATE TABLE series_log_3v3(
-            game_id, tier, winning_org, losing_org, 
+            timestamp, game_id, tier, winning_org, losing_org, 
             games_won_by_loser, played_previously,
             wp1, wp2, wp3, lp1, lp2, lp3, 
             guid_1, guid_2, guid_3, guid_4, guid_5)"""
