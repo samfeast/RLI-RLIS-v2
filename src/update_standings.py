@@ -1,7 +1,6 @@
 import os
 import sqlite3
 import json
-import time
 
 import logging
 
@@ -17,6 +16,9 @@ POINTS_2v2 = config["POINTS_2v2"]
 POINTS_1v1 = config["POINTS_1v1"]
 
 logger = logging.getLogger("script.update_standings")
+
+# Suppress spammy PIL image editing logs
+logging.getLogger("PIL.PngImagePlugin").setLevel(30)
 
 logging.basicConfig(
     filename="../logs/rlis.log",
@@ -143,8 +145,8 @@ def edit_graphic(tier, data):
 
     logger.info("Finished drawing org data")
 
-    # Save file with no compression to reduce time (at cost of output file size)
-    image.save(f"../data/graphics/{tier.replace(' ', '_').lower()}.png", compress_level=0)
+    # Save file compression level 5 to balance time and space
+    image.save(f"../data/graphics/{tier.replace(' ', '_').lower()}.png", compress_level=5)
 
     logger.info("Successfully saved standings graphic")
 
