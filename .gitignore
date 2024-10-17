@@ -3,4 +3,5 @@ config.json
 logs/
 data/
 .venv/
+src/assets/fonts
 src/__pycache__/
