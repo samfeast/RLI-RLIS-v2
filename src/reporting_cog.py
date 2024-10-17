@@ -1,13 +1,15 @@
 import logging
-from os import listdir
 import json
 import time
 
 from typing import Literal
 
+from update_standings import update
+
 import discord
 from discord.ext import commands
 from discord import app_commands
+import asyncio
 
 
 logger = logging.getLogger("bot.reporting")
@@ -138,11 +140,15 @@ class Reporting(commands.Cog):
         for player in winning_players:
             if player not in expected_winning_players and player not in self.SUBS:
                 logger.warning("Report failing due to invalid player argument")
-                return "At least one player argument is invalid (Did you forget to register a sub?)"
+                return (
+                    "At least one player argument is invalid (Did you forget to register a sub?)"
+                )
         for player in losing_players:
             if player not in expected_losing_players and player not in self.SUBS:
                 logger.warning("Report failing due to invalid player argument")
-                return "At least one player argument is invalid (Did you forget to register a sub?)"
+                return (
+                    "At least one player argument is invalid (Did you forget to register a sub?)"
+                )
 
         return None
 
@@ -180,6 +186,17 @@ class Reporting(commands.Cog):
         logger.info(f"Generated report embed for game id {game_id}")
 
         return embed
+
+    async def update_standings_graphics(self, tiers):
+        logger.info("Attempting to update standings graphics")
+        try:
+            t1 = time.time()
+            await asyncio.to_thread(update, tiers)
+            logger.info(
+                f"Successfully updated standings graphics for {len(tiers)} tiers in {round(time.time() - t1, 3)}s"
+            )
+        except Exception as e:
+            logger.error(f"Failed to update standings graphics: {e}")
 
     # Ping reporting cog
     @app_commands.command(description="Ping the reporting cog")
@@ -304,6 +321,8 @@ class Reporting(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
+        await self.update_standings_graphics(["Overall", tier])
+
     @app_commands.command(description="Report a 2v2 result")
     @app_commands.guilds(discord.Object(id=GUILD_ID))
     async def report_2v2(
@@ -380,6 +399,8 @@ class Reporting(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
+        await self.update_standings_graphics(["Overall", tier])
+
     @app_commands.command(description="Report a 1v1 result")
     @app_commands.guilds(discord.Object(id=GUILD_ID))
     async def report_1v1(
@@ -451,6 +472,8 @@ class Reporting(commands.Cog):
         )
 
         await interaction.response.send_message(embed=embed)
+
+        await self.update_standings_graphics(["Overall", tier])
 
     @report_3v3.autocomplete("winning_org")
     @report_3v3.autocomplete("losing_org")
