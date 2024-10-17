@@ -47,8 +47,9 @@ class Results(commands.Cog):
         # Get the tier and org of the necessary player
         async with self.bot.pool.acquire() as con:
             res = await con.execute(
-                "SELECT name, tier, org FROM players WHERE id = ?", (str(player.id),)
+                "SELECT name, tier, org FROM players WHERE id = ?", (player.id,)
             )
+
             player_info = await res.fetchone()
 
         if player_info == None:
@@ -99,7 +100,7 @@ class Results(commands.Cog):
         f = discord.File(f"./assets/logos/{logo_file}", filename="image.png")
         embed = discord.Embed(
             title=f"{player_info['name']}",
-            description=f"**{player_info['org']} | {player_info['tier']}**",
+            description=f"**{player_info['org']} — {player_info['tier']}**",
             colour=discord.Colour.from_str(ORGS[player_info["org"]]["colour"]),
         )
         embed.set_thumbnail(url="attachment://image.png")
