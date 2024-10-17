@@ -19,7 +19,7 @@ def main():
                     num_players += 1
                     cur.execute(
                         "INSERT INTO players VALUES(?, ?, ?, ?, ?, ?)",
-                        (row[0], row[1], row[2], row[3], row[4], row[5]),
+                        (int(row[0]), row[1], row[2], row[3], row[4], row[5]),
                     )
 
         con.commit()
