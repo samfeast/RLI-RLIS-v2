@@ -119,7 +119,7 @@ class Results(commands.Cog):
             async with self.bot.pool.acquire() as con:
                 res = await con.execute(
                     "SELECT tier FROM players WHERE id = ?",
-                    (interaction.id,),
+                    (interaction.user.id,),
                 )
                 data = await res.fetchone()
                 if data is None:
@@ -194,9 +194,7 @@ class Results(commands.Cog):
         embed = discord.Embed(title=f"{tier} Standings", colour=0x1B68BB)
         position = 1
         for org in ordered_orgs:
-            embed.add_field(
-                name=f"{position}.", value=f"{org}:\t{ordered_orgs[org]}", inline=False
-            )
+            embed.add_field(name=f"{position}.", value=f"{org}:\t{ordered_orgs[org]}", inline=False)
             position += 1
 
         await interaction.response.send_message(embed=embed)
