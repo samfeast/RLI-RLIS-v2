@@ -138,12 +138,54 @@ class Results(commands.Cog):
         logger.debug("Ready to send image")
         await interaction.response.send_message(file=f)
 
+    # View the results for a tier
+    @app_commands.command(description="View the results for a specified tier in a particular week")
+    @app_commands.guilds(discord.Object(id=GUILD_ID))
+    async def results(self, interaction: discord.Interaction, week: int, tier: str = None):
+        logger.debug(f"/results used by {interaction.user.id}")
+
+        if tier is None:
+            async with self.bot.pool.acquire() as con:
+                res = await con.execute(
+                    "SELECT tier FROM players WHERE id = ?",
+                    (interaction.user.id,),
+                )
+                data = await res.fetchone()
+                if data is None:
+                    logger.warning(
+                        f"/results failing as no tier was supplied by a non playing user"
+                    )
+                    await interaction.response.send_message("Tier not found")
+                    return
+                else:
+                    tier = data[0]
+        try:
+            f = discord.File(
+                f"../data/graphics/{tier.replace(' ', '_').lower()}_week_{week}.png",
+                filename="image.png",
+            )
+            logger.debug("Ready to send image")
+            await interaction.response.send_message(file=f)
+        except FileNotFoundError:
+            logger.debug("Failed to send image as the required graphic does not exist")
+            await interaction.response.send_message("No results to show")
+
     @standings.autocomplete("tier")
-    async def tier_autocomplete(self, interaction: discord.Interaction, current: str):
+    async def tier_autocomplete_with_overall(self, interaction: discord.Interaction, current: str):
         choices = []
         matched_tiers = [
             t for t in list(TIERS.keys()) + ["Overall"] if t.lower().startswith(current.lower())
         ]
+        for tier in matched_tiers:
+            choices.append(app_commands.Choice(name=tier, value=tier))
+
+        logger.debug(f"Generated {len(choices)} tier choices")
+        return choices
+
+    @results.autocomplete("tier")
+    async def tier_autocomplete(self, interaction: discord.Interaction, current: str):
+        choices = []
+        matched_tiers = [t for t in list(TIERS.keys()) if t.lower().startswith(current.lower())]
         for tier in matched_tiers:
             choices.append(app_commands.Choice(name=tier, value=tier))
 
