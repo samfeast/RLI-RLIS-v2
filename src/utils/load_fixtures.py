@@ -32,7 +32,7 @@ def main():
 
         con.commit()
 
-        print(f"{num_fixtures} players loaded")
+        print(f"{num_fixtures} fixtures loaded")
 
     if os.path.exists("../../data/rlis_data.db"):
         load_fixtures()
