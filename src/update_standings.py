@@ -295,9 +295,13 @@ def get_data(tier):
     for row in res.fetchall():
         data[row[0]]["games_lost"] += row[1]
 
-    # Round the points to ensure there isn't floating point inaccuracy
+    # Round the points to ensure there isn't floating point inaccuracy, converting floats with a 0
+    # decimal value to ints
     for org in data:
         data[org]["points"] = round(data[org]["points"], 1)
+
+        if isinstance(data[org]["points"], float) and data[org]["points"].is_integer():
+            data[org]["points"] = int(data[org]["points"])
 
     logger.info("Finished querying database for org data")
 
