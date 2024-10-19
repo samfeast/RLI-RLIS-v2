@@ -310,7 +310,5 @@ def update(tiers, week):
     for tier in tiers:
         logger.info(f"Generating results graphic for {tier}")
         data = get_data(tier, week)
-        edit_graphic(tier, week, data)
-
-
-update(["Superstar"], 1)
+        if data != {}:
+            edit_graphic(tier, week, data)
