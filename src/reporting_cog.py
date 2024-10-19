@@ -4,7 +4,8 @@ import time
 
 from typing import Literal
 
-from update_standings import update
+from update_standings import update as update_s
+from update_results import update as update_r
 
 import discord
 from discord.ext import commands
@@ -191,12 +192,24 @@ class Reporting(commands.Cog):
         logger.info("Attempting to update standings graphics")
         try:
             t1 = time.time()
-            await asyncio.to_thread(update, tiers)
+            await asyncio.to_thread(update_s, tiers)
             logger.info(
                 f"Successfully updated standings graphics for {len(tiers)} tiers in {round(time.time() - t1, 3)}s"
             )
         except Exception as e:
             logger.error(f"Failed to update standings graphics: {e}")
+
+    async def update_results_graphics(self, tiers, week):
+
+        logger.info("Attempting to update results graphics")
+        try:
+            t1 = time.time()
+            await asyncio.to_thread(update_r, tiers, week)
+            logger.info(
+                f"Successfully updated results graphics for {len(tiers)} tiers in {round(time.time() - t1, 3)}s"
+            )
+        except Exception as e:
+            logger.error(f"Failed to update results graphics: {e}")
 
     # Ping reporting cog
     @app_commands.command(description="Ping the reporting cog")
@@ -279,6 +292,14 @@ class Reporting(commands.Cog):
 
         game_id = await self.generate_game_id(winning_org, losing_org, tier, 3)
 
+        # Make sure that both orgs field a roster in this tier
+        if winning_players == [] or losing_players == []:
+            logger.warning("Report failing as a team does not field a roster in this tier")
+            await interaction.response.send_message(
+                "One or more teams do not field a roster in this tier"
+            )
+            return
+
         # Store the result in the database
         async with self.bot.pool.acquire() as con:
             await con.execute(
@@ -321,7 +342,19 @@ class Reporting(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
+        # Find what week the fixture is in
+        async with self.bot.pool.acquire() as con:
+            res = await con.execute(
+                """SELECT week FROM fixtures WHERE 
+                tier = ? AND ? IN(org_1, org_2) AND ? IN(org_1, org_2)""",
+                (tier, ORGS[winning_org]["id"], ORGS[losing_org]["id"]),
+            )
+            # This will never fail as the format is round robin, meaning all possible matches
+            # (that get to this point) must be scheduled at some point
+            week = (await res.fetchone())["week"]
+
         await self.update_standings_graphics(["Overall", tier])
+        await self.update_results_graphics([tier], week)
 
     @app_commands.command(description="Report a 2v2 result")
     @app_commands.guilds(discord.Object(id=GUILD_ID))
@@ -358,6 +391,14 @@ class Reporting(commands.Cog):
         logger.info("Report arguments validated successfully")
 
         game_id = await self.generate_game_id(winning_org, losing_org, tier, 2)
+
+        # Make sure that both orgs field a roster in this tier
+        if winning_players == [] or losing_players == []:
+            logger.warning("Report failing as a team does not field a roster in this tier")
+            await interaction.response.send_message(
+                "One or more teams do not field a roster in this tier"
+            )
+            return
 
         # Store the result in the database
         async with self.bot.pool.acquire() as con:
@@ -399,7 +440,19 @@ class Reporting(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
+        # Find what week the fixture is in
+        async with self.bot.pool.acquire() as con:
+            res = await con.execute(
+                """SELECT week FROM fixtures WHERE 
+                tier = ? AND ? IN(org_1, org_2) AND ? IN(org_1, org_2)""",
+                (tier, ORGS[winning_org]["id"], ORGS[losing_org]["id"]),
+            )
+            # This will never fail as the format is round robin, meaning all possible matches
+            # (that get to this point) must be scheduled at some point
+            week = (await res.fetchone())["week"]
+
         await self.update_standings_graphics(["Overall", tier])
+        await self.update_results_graphics([tier], week)
 
     @app_commands.command(description="Report a 1v1 result")
     @app_commands.guilds(discord.Object(id=GUILD_ID))
@@ -434,6 +487,14 @@ class Reporting(commands.Cog):
         logger.info("Report arguments validated successfully")
 
         game_id = await self.generate_game_id(winning_org, losing_org, tier, 1)
+
+        # Make sure that both orgs field a roster in this tier
+        if winning_players == [] or losing_players == []:
+            logger.warning("Report failing as a team does not field a roster in this tier")
+            await interaction.response.send_message(
+                "One or more teams do not field a roster in this tier"
+            )
+            return
 
         # Store the result in the database
         async with self.bot.pool.acquire() as con:
@@ -473,7 +534,19 @@ class Reporting(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
+        # Find what week the fixture is in
+        async with self.bot.pool.acquire() as con:
+            res = await con.execute(
+                """SELECT week FROM fixtures WHERE 
+                tier = ? AND ? IN(org_1, org_2) AND ? IN(org_1, org_2)""",
+                (tier, ORGS[winning_org]["id"], ORGS[losing_org]["id"]),
+            )
+            # This will never fail as the format is round robin, meaning all possible matches
+            # (that get to this point) must be scheduled at some point
+            week = (await res.fetchone())["week"]
+
         await self.update_standings_graphics(["Overall", tier])
+        await self.update_results_graphics([tier], week)
 
     @report_3v3.autocomplete("winning_org")
     @report_3v3.autocomplete("losing_org")
