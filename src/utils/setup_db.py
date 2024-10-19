@@ -8,6 +8,7 @@ def main():
         cur = con.cursor()
         cur.execute("CREATE TABLE players(id, name, platform, platform_id, tier, org)")
         cur.execute("CREATE TABLE subs(id, name, platform, platform_id)")
+        cur.execute("CREATE TABLE fixtures(week, tier, org_1, org_2)")
         cur.execute(
             """CREATE TABLE series_log_1v1(
             timestamp, game_id, tier, winning_org, losing_org, 
