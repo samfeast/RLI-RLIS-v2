@@ -174,6 +174,7 @@ def get_data(tier):
     if tier == "Overall":
         for org in data:
             data[org]["roster"] = [ORGS[org]["manager"]]
+        tier_str = tier
         # If the tier is Overall, query the wildcard character to get all tiers
         tier = "%"
     else:
@@ -295,11 +296,20 @@ def get_data(tier):
     for row in res.fetchall():
         data[row[0]]["games_lost"] += row[1]
 
-    # Round the points to ensure there isn't floating point inaccuracy, converting floats with a 0
-    # decimal value to ints
+    # Round the points to ensure there isn't floating point inaccuracy
+    # If the tier is overall, find how many teams the org has, and divide to get an average
     for org in data:
-        data[org]["points"] = round(data[org]["points"], 1)
+        # If tier is '%' then the Overall standings are being generated
+        if tier == "%":
+            # Get the number of distinct tiers where the org has at least one player registered
+            res = cur.execute("SELECT COUNT (DISTINCT tier) FROM players WHERE org = ?", (org,))
+            num_teams = res.fetchone()[0]
+            data[org]["points"] = round(data[org]["points"] / num_teams, 2)
+        else:
+            data[org]["points"] = round(data[org]["points"], 1)
 
+        # If a value is a float that is representing an integer (e.g 7.0), make it an integer
+        # such that it displays as 7
         if isinstance(data[org]["points"], float) and data[org]["points"].is_integer():
             data[org]["points"] = int(data[org]["points"])
 
@@ -314,3 +324,6 @@ def update(tiers):
         logger.info(f"Generating standings graphic for {tier}")
         data = get_data(tier)
         edit_graphic(tier, data)
+
+
+update(["Overall"])
