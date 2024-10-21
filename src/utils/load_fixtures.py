@@ -14,6 +14,8 @@ def main():
         con = sqlite3.connect("../../data/rlis_data.db")
         cur = con.cursor()
 
+        cur.execute("DELETE FROM fixtures")
+
         num_fixtures = 0
         with open("../../data/fixtures.csv", "r") as csv_file:
             reader = csv.reader(csv_file, delimiter=",")

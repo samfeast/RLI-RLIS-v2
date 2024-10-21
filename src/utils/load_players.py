@@ -8,6 +8,8 @@ def main():
         con = sqlite3.connect("../../data/rlis_data.db")
         cur = con.cursor()
 
+        cur.execute("DELETE FROM players")
+
         num_players = 0
         with open("../../data/player_info.csv", "r") as csv_file:
             reader = csv.reader(csv_file, delimiter=",")
@@ -18,8 +20,8 @@ def main():
                 if row[0].isdigit():
                     num_players += 1
                     cur.execute(
-                        "INSERT INTO players VALUES(?, ?, ?, ?, ?, ?)",
-                        (int(row[0]), row[1], row[2], row[3], row[4], row[5]),
+                        "INSERT INTO players VALUES(?, ?, ?, ?, ?, ?, ?)",
+                        (int(row[0]), "main", row[1], row[2], row[3], row[4], row[5]),
                     )
 
         con.commit()
