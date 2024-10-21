@@ -8,7 +8,7 @@ import json
 logger = logging.getLogger("script.ballchasing_api")
 
 logging.basicConfig(
-    filename="../../logs/rlis.log",
+    filename="../logs/rlis.log",
     encoding="utf-8",
     datefmt="%Y-%m-%d %H:%M:%S",
     format="[%(asctime)s] [%(levelname)-8s] %(name)s: %(message)s",
