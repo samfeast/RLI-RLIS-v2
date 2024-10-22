@@ -59,41 +59,35 @@ class Results(commands.Cog):
 
         logger.info("Successfully found player in database")
 
+        player_record = {
+            3: {"won": 0, "lost": 0},
+            2: {"won": 0, "lost": 0},
+            1: {"won": 0, "lost": 0},
+        }
+
         # Get the number of 3s series wins and losses
         async with self.bot.pool.acquire() as con:
             res = await con.execute(
-                """SELECT 
-                    SUM(CASE WHEN ? IN(wp1, wp2, wp3) THEN 1 ELSE 0 END) AS wins,
-                    SUM(CASE WHEN ? IN(lp1, lp2, lp3) THEN 1 ELSE 0 END) AS losses
-                FROM series_log_3v3""",
-                (player_info["name"], player_info["name"]),
+                """SELECT mode, wp1, wp2, wp3, lp1, lp2, lp3
+                FROM series_log AS L JOIN series_players AS P ON L.game_id = P.game_id
+                WHERE tier = ? AND ? IN (winning_org, losing_org)""",
+                (player_info["tier"], player_info["org"]),
             )
-            data = await res.fetchone()
-            record_3v3 = f"{data[0]}-{data[1]}"
+            # Data only includes results in the relevant tier where the relevant org was involved
+            data = await res.fetchall()
+            for row in data:
+                winning_players = [row["wp1"], row["wp2"], row["wp3"]]
+                losing_players = [row["lp1"], row["lp2"], row["lp3"]]
 
-        # Get the number of 2s series wins and losses
-        async with self.bot.pool.acquire() as con:
-            res = await con.execute(
-                """SELECT 
-                    SUM(CASE WHEN ? IN(wp1, wp2) THEN 1 ELSE 0 END) AS wins,
-                    SUM(CASE WHEN ? IN(lp1, lp2) THEN 1 ELSE 0 END) AS losses
-                FROM series_log_2v2""",
-                (player_info["name"], player_info["name"]),
-            )
-            data = await res.fetchone()
-            record_2v2 = f"{data[0]}-{data[1]}"
+                mode = row["mode"]
+                if player_info["name"] in winning_players:
+                    player_record[mode]["won"] += 1
+                if player_info["name"] in losing_players:
+                    player_record[mode]["lost"] += 1
 
-        # Get the number of 1s series wins and losses
-        async with self.bot.pool.acquire() as con:
-            res = await con.execute(
-                """SELECT 
-                    SUM(CASE WHEN wp1 = ? THEN 1 ELSE 0 END) AS wins,
-                    SUM(CASE WHEN lp1 = ? THEN 1 ELSE 0 END) AS losses
-                FROM series_log_1v1""",
-                (player_info["name"], player_info["name"]),
-            )
-            data = await res.fetchone()
-            record_1v1 = f"{data[0]}-{data[1]}"
+        record_3v3 = f"{player_record[3]["won"]}-{player_record[3]["lost"]}"
+        record_2v2 = f"{player_record[2]["won"]}-{player_record[2]["lost"]}"
+        record_1v1 = f"{player_record[1]["won"]}-{player_record[1]["lost"]}"
 
         # Send the embed with the org logo as the thumbnail
         logo_file = ORGS[player_info["org"]]["logo_file"]
