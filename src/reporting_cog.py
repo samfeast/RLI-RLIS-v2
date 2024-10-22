@@ -36,7 +36,7 @@ class Reporting(commands.Cog):
     async def get_players(self):
         self.PLAYERS = []
         async with self.bot.pool.acquire() as con:
-            res = await con.execute("SELECT name FROM players")
+            res = await con.execute("SELECT name FROM players WHERE status = 'main'")
             for row in await res.fetchall():
                 self.PLAYERS.append(row["name"])
 
@@ -46,7 +46,7 @@ class Reporting(commands.Cog):
     async def get_subs(self):
         self.SUBS = []
         async with self.bot.pool.acquire() as con:
-            res = await con.execute("SELECT name FROM subs")
+            res = await con.execute("SELECT name FROM players WHERE status = 'sub'")
             for row in await res.fetchall():
                 self.SUBS.append(row["name"])
         logger.info("Successfully fetched subs from database")
@@ -69,34 +69,6 @@ class Reporting(commands.Cog):
         mode,
     ):
         game_id = await self.generate_game_id(winning_org, losing_org, tier, mode)
-
-        if mode == 3:
-            async with self.bot.pool.acquire() as con:
-                res = await con.execute(
-                    "SELECT COUNT(game_id) FROM series_log_3v3 WHERE game_id = ?", (game_id,)
-                )
-                # True if the game id has been used before, false otherwise
-                game_id_used = True if (await res.fetchone())[0] > 0 else False
-        if mode == 2:
-            async with self.bot.pool.acquire() as con:
-                res = await con.execute(
-                    "SELECT COUNT(game_id) FROM series_log_2v2 WHERE game_id = ?", (game_id,)
-                )
-                # True if the game id has been used before, false otherwise
-                game_id_used = True if (await res.fetchone())[0] > 0 else False
-
-        if mode == 1:
-            async with self.bot.pool.acquire() as con:
-                res = await con.execute(
-                    "SELECT COUNT(game_id) FROM series_log_1v1 WHERE game_id = ?", (game_id,)
-                )
-                # True if the game id has been used before, false otherwise
-                game_id_used = True if (await res.fetchone())[0] > 0 else False
-
-        # Check if the game id has been used before
-        if game_id_used:
-            logger.warning("Report failing as game id is already stored")
-            return "This series has already been reported"
 
         # Check that the tier exists
         if tier not in TIERS.keys():
@@ -128,7 +100,7 @@ class Reporting(commands.Cog):
         expected_losing_players = []
         async with self.bot.pool.acquire() as con:
             res = await con.execute(
-                "SELECT name, org FROM players WHERE tier = ? AND (org = ? OR org = ?)",
+                "SELECT name, org FROM players WHERE tier = ? AND (org = ? OR org = ?) AND status = 'main'",
                 (tier, winning_org, losing_org),
             )
             for row in await res.fetchall():
@@ -153,41 +125,74 @@ class Reporting(commands.Cog):
 
         return None
 
-    # Generate a discord.Embed object to display a result
-    async def generate_report_embed(
-        self,
-        game_id,
-        tier,
-        mode,
-        played_previously,
-        winning_org,
-        losing_org,
-        score,
-        winning_players,
-        losing_players,
-    ):
-        if mode == 3:
+    # Generate a discord.Embed object to display a result from a Series_Result
+    async def generate_report_embed(self, res):
+        if res.mode == 3:
             mode_str = "3v3"
-        elif mode == 2:
+        elif res.mode == 2:
             mode_str = "2v2"
-        elif mode == 1:
+        elif res.mode == 1:
             mode_str = "1v1"
 
-        embed = discord.Embed(title=game_id, color=0x1B68BB)
-        embed.add_field(name="Tier", value=tier, inline=True)
+        embed = discord.Embed(title=res.game_id, color=0x1B68BB)
+        embed.add_field(name="Tier", value=res.tier, inline=True)
         embed.add_field(name="Gamemode", value=mode_str, inline=True)
-        embed.add_field(name="Played...day(s) ago", value=played_previously, inline=True)
-        embed.add_field(name="Winner", value=winning_org, inline=True)
-        embed.add_field(name="Loser", value=losing_org, inline=True)
-        embed.add_field(name="Score", value=score, inline=True)
-        embed.add_field(name="Winning Players", value=", ".join(winning_players), inline=True)
-        embed.add_field(name="Losing Players", value=", ".join(losing_players), inline=True)
+        embed.add_field(name="Played...day(s) ago", value=res.played_previously, inline=True)
+        embed.add_field(name="Winner", value=res.winning_org, inline=True)
+        embed.add_field(name="Loser", value=res.losing_org, inline=True)
+        embed.add_field(name="Score", value=res.score, inline=True)
+        embed.add_field(name="Winning Players", value=", ".join(res.winning_players), inline=True)
+        embed.add_field(name="Losing Players", value=", ".join(res.losing_players), inline=True)
         embed.set_footer(text="If this is incorrect, message Res.")
 
-        logger.info(f"Generated report embed for game id {game_id}")
+        logger.info(f"Generated report embed for game id {res.game_id}")
 
         return embed
 
+    # Store a Series_Result in the db
+    async def store_series_result(self, res):
+
+        # Pad winning and losing player lists to make them fit in the same query for all modes
+        winning_players = res.winning_players + ([None] * (6 - len(res.winning_players)))
+        losing_players = res.losing_players + ([None] * (6 - len(res.winning_players)))
+
+        # Write to the series_log table, then to series_players
+        # This is needed to maintain referential integrity
+        async with self.bot.pool.acquire() as con:
+            await con.execute(
+                """INSERT INTO series_log(
+                timestamp, game_id, tier, mode, winning_org, losing_org, 
+                games_won_by_loser, played_previously) 
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    round(time.time()),
+                    res.game_id,
+                    res.tier,
+                    res.mode,
+                    res.winning_org,
+                    res.losing_org,
+                    int(res.score[-1]),
+                    res.played_previously,
+                ),
+            )
+            await con.execute(
+                """INSERT INTO series_players(
+                game_id,
+                wp1, wp2, wp3, 
+                lp1, lp2, lp3) 
+                VALUES(?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    res.game_id,
+                    winning_players[0],
+                    winning_players[1],
+                    winning_players[2],
+                    losing_players[0],
+                    losing_players[1],
+                    losing_players[2],
+                ),
+            )
+
+    # Update standings graphics by calling the relevant synchronous function in another thread
     async def update_standings_graphics(self, tiers):
         logger.info("Attempting to update standings graphics")
         try:
@@ -199,6 +204,7 @@ class Reporting(commands.Cog):
         except Exception as e:
             logger.error(f"Failed to update standings graphics: {e}")
 
+    # Update results graphics by calling the relevant synchronous function in another thread
     async def update_results_graphics(self, tiers, week):
 
         logger.info("Attempting to update results graphics")
@@ -219,20 +225,21 @@ class Reporting(commands.Cog):
         await interaction.response.send_message("Pong!", ephemeral=True)
 
     # Record a new sub entry in the database
-    @app_commands.command(description="Register a new sub")
+    @app_commands.command(description="Register a new sub (Any playstation -> PS4)")
     @app_commands.guilds(discord.Object(id=GUILD_ID))
     async def register_sub(
         self,
         interaction: discord.Interaction,
         user: discord.User,
         name: str,
-        platform: str,
+        platform: Literal["Steam", "Epic", "PS4", "Xbox"],
         platform_id: str,
     ):
         logger.debug(f"/register_sub used by {interaction.user.id}")
         async with self.bot.pool.acquire() as con:
             await con.execute(
-                "INSERT INTO subs VALUES(?, ?, ?, ?)", (user.id, name, platform, platform_id)
+                "INSERT INTO players(id, status, name, platform, platform_id) VALUES(?, ?, ?, ?, ?)",
+                (user.id, "sub", name, platform, platform_id),
             )
 
         # Update the list of subs
@@ -281,7 +288,7 @@ class Reporting(commands.Cog):
         if len(winning_players) + len(losing_players) == 0:
             async with self.bot.pool.acquire() as con:
                 res = await con.execute(
-                    "SELECT name, org FROM players WHERE tier = ? AND (org = ? OR org = ?)",
+                    "SELECT name, org FROM players WHERE tier = ? AND (org = ? OR org = ?) AND status = 'main'",
                     (tier, winning_org, losing_org),
                 )
                 for row in await res.fetchall():
@@ -300,45 +307,26 @@ class Reporting(commands.Cog):
             )
             return
 
+        # Construct Series_Result for this report
+        result_obj = Series_Result(
+            game_id,
+            tier,
+            3,
+            winning_org,
+            losing_org,
+            score,
+            played_previously,
+            winning_players,
+            losing_players,
+        )
+
         # Store the result in the database
-        async with self.bot.pool.acquire() as con:
-            await con.execute(
-                """INSERT INTO series_log_3v3(
-                timestamp, game_id, tier, winning_org, losing_org, 
-                games_won_by_loser, played_previously,
-                wp1, wp2, wp3, lp1, lp2, lp3) 
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    round(time.time()),
-                    game_id,
-                    tier,
-                    winning_org,
-                    losing_org,
-                    int(score[-1]),
-                    played_previously,
-                    winning_players[0],
-                    winning_players[1],
-                    winning_players[2],
-                    losing_players[0],
-                    losing_players[1],
-                    losing_players[2],
-                ),
-            )
+        await self.store_series_result(result_obj)
 
         logger.info(f"Successfully stored series with game id {game_id}")
 
         # Generate the report embed and send it
-        embed = await self.generate_report_embed(
-            game_id,
-            tier,
-            3,
-            played_previously,
-            winning_org,
-            losing_org,
-            score,
-            winning_players,
-            losing_players,
-        )
+        embed = await self.generate_report_embed(result_obj)
 
         await interaction.response.send_message(embed=embed)
 
@@ -400,43 +388,26 @@ class Reporting(commands.Cog):
             )
             return
 
+        # Construct Series_Result for this report
+        result_obj = Series_Result(
+            game_id,
+            tier,
+            2,
+            winning_org,
+            losing_org,
+            score,
+            played_previously,
+            winning_players,
+            losing_players,
+        )
+
         # Store the result in the database
-        async with self.bot.pool.acquire() as con:
-            await con.execute(
-                """INSERT INTO series_log_2v2(
-                timestamp, game_id, tier, winning_org, losing_org, 
-                games_won_by_loser, played_previously,
-                wp1, wp2, lp1, lp2) 
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    round(time.time()),
-                    game_id,
-                    tier,
-                    winning_org,
-                    losing_org,
-                    int(score[-1]),
-                    played_previously,
-                    winning_players[0],
-                    winning_players[1],
-                    losing_players[0],
-                    losing_players[1],
-                ),
-            )
+        await self.store_series_result(result_obj)
 
         logger.info(f"Successfully stored series with game id {game_id}")
 
         # Generate the report embed and send it
-        embed = await self.generate_report_embed(
-            game_id,
-            tier,
-            2,
-            played_previously,
-            winning_org,
-            losing_org,
-            score,
-            winning_players,
-            losing_players,
-        )
+        embed = await self.generate_report_embed(result_obj)
 
         await interaction.response.send_message(embed=embed)
 
@@ -496,41 +467,26 @@ class Reporting(commands.Cog):
             )
             return
 
+        # Construct Series_Result for this report
+        result_obj = Series_Result(
+            game_id,
+            tier,
+            1,
+            winning_org,
+            losing_org,
+            score,
+            played_previously,
+            winning_players,
+            losing_players,
+        )
+
         # Store the result in the database
-        async with self.bot.pool.acquire() as con:
-            await con.execute(
-                """INSERT INTO series_log_1v1(
-                timestamp, game_id, tier, winning_org, losing_org, 
-                games_won_by_loser, played_previously,
-                wp1, lp1) 
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    round(time.time()),
-                    game_id,
-                    tier,
-                    winning_org,
-                    losing_org,
-                    int(score[-1]),
-                    played_previously,
-                    winning_players[0],
-                    losing_players[0],
-                ),
-            )
+        await self.store_series_result(result_obj)
 
         logger.info(f"Successfully stored series with game id {game_id}")
 
         # Generate the report embed and send it
-        embed = await self.generate_report_embed(
-            game_id,
-            tier,
-            1,
-            played_previously,
-            winning_org,
-            losing_org,
-            score,
-            winning_players,
-            losing_players,
-        )
+        embed = await self.generate_report_embed(result_obj)
 
         await interaction.response.send_message(embed=embed)
 
@@ -613,6 +569,31 @@ class Reporting(commands.Cog):
 
         logger.debug(f"Generated {len(choices)} player choices")
         return choices
+
+
+# Object to store all the fields generated by a series report
+class Series_Result:
+    def __init__(
+        self,
+        game_id,
+        tier,
+        mode,
+        winning_org,
+        losing_org,
+        score,
+        played_previously,
+        winning_players,
+        losing_players,
+    ):
+        self.game_id = game_id
+        self.tier = tier
+        self.mode = mode
+        self.winning_org = winning_org
+        self.losing_org = losing_org
+        self.score = score
+        self.played_previously = played_previously
+        self.winning_players = winning_players
+        self.losing_players = losing_players
 
 
 async def setup(bot):
