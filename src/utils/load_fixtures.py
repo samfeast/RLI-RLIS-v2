@@ -14,6 +14,9 @@ def main():
         con = sqlite3.connect("../../data/rlis_data.db")
         cur = con.cursor()
 
+        # Enforce referential integrity constraints
+        cur.execute("PRAGMA foreign_keys = ON")
+
         cur.execute("DELETE FROM fixtures")
 
         num_fixtures = 0
