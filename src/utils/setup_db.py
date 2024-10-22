@@ -62,8 +62,8 @@ def main():
         cur.execute(
             """CREATE TABLE game_stats(
             guid TEXT PRIMARY KEY, 
-            url TEXT NOT NULL, 
-            timestamp INTEGER NOT NULL, 
+            url TEXT, 
+            timestamp INTEGER, 
             game_id INTEGER NOT NULL, 
             duration REAL, 
             time_in_side_winner REAL, 
