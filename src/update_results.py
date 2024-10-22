@@ -12,6 +12,10 @@ with open("../config.json", "r") as read_file:
 ORGS = config["ORGS"]
 TIERS = config["TIERS"]
 
+MAX_GAMES_3v3 = config["MAX_GAMES_3v3"]
+MAX_GAMES_2v2 = config["MAX_GAMES_2v2"]
+MAX_GAMES_1v1 = config["MAX_GAMES_1v1"]
+
 POINTS_3v3 = config["POINTS_3v3"]
 POINTS_2v2 = config["POINTS_2v2"]
 POINTS_1v1 = config["POINTS_1v1"]
@@ -81,8 +85,7 @@ def edit_graphic(tier, week, data):
         # Draw data for each mode in turn
         for i in range(3):
             try:
-                #
-                series_data = data[match][str(3 - i)]
+                series_data = data[match][3 - i]
             except KeyError:
                 # If a key error is raised, the series has not been played yet, so skip to the next
                 continue
@@ -204,100 +207,47 @@ def get_data(tier, week):
     logger.debug("Starting to query database for results")
 
     for partial_id in partial_game_ids:
-        # Look up 3v3 result from game id
+        # Get the series info and players of all modes under the partial id
         cur.execute(
-            """SELECT winning_org, losing_org, games_won_by_loser, 
-            wp1, wp2, wp3, lp1, lp2, lp3 FROM series_log_3v3
-            WHERE game_id = ?""",
-            (f"{partial_id}3",),
+            """SELECT mode, winning_org, losing_org, games_won_by_loser,
+            wp1, wp2, wp3, lp1, lp2, lp3 
+            FROM series_log AS L JOIN series_players AS P ON L.game_id = P.game_id
+            WHERE L.game_id IN (?, ?, ?)""",
+            (f"{partial_id}3", f"{partial_id}2", f"{partial_id}1"),
         )
-        match_data = cur.fetchone()
-        # Winning data is stored at indices 0, 3, 4, and 5
-        # Losing data is stored at indices 1, 2, 6, 7, and 8
-        if match_data is not None:
-            if ORGS[match_data[0]]["id"] > ORGS[match_data[1]]["id"]:
-                # In this case org 1 is the winning org
-                data[partial_id]["3"] = {
-                    "org_1_name": match_data[0],
-                    "org_1_games": 3,
-                    "org_1_roster": [match_data[3], match_data[4], match_data[5]],
-                    "org_2_name": match_data[1],
-                    "org_2_games": match_data[2],
-                    "org_2_roster": [match_data[6], match_data[7], match_data[8]],
-                }
-            else:
-                # In this case org 1 is the losing org
-                data[partial_id]["3"] = {
-                    "org_1_name": match_data[1],
-                    "org_1_games": match_data[2],
-                    "org_1_roster": [match_data[6], match_data[7], match_data[8]],
-                    "org_2_name": match_data[0],
-                    "org_2_games": 3,
-                    "org_2_roster": [match_data[3], match_data[4], match_data[5]],
-                }
+        match_data = cur.fetchall()
+        for match in match_data:
+            # Find the number of games won by the winning team / lost by the losing team
+            if match[0] == 3:
+                max_games = MAX_GAMES_3v3
+            if match[0] == 2:
+                max_games = MAX_GAMES_2v2
+            if match[0] == 1:
+                max_games = MAX_GAMES_1v1
 
-        # Look up 2v2 result from game id
-        cur.execute(
-            """SELECT winning_org, losing_org, games_won_by_loser, 
-            wp1, wp2, lp1, lp2 FROM series_log_2v2
-            WHERE game_id = ?""",
-            (f"{partial_id}2",),
-        )
-        match_data = cur.fetchone()
-        # Winning data is stored at indices 0, 3, and 4
-        # Losing data is stored at indices 1, 2, 5, and 6
-        if match_data is not None:
-            if ORGS[match_data[0]]["id"] > ORGS[match_data[1]]["id"]:
-                # In this case org 1 is the winning org
-                data[partial_id]["2"] = {
-                    "org_1_name": match_data[0],
-                    "org_1_games": 2,
-                    "org_1_roster": [match_data[3], match_data[4]],
-                    "org_2_name": match_data[1],
-                    "org_2_games": match_data[2],
-                    "org_2_roster": [match_data[5], match_data[6]],
-                }
-            else:
-                # In this case org 1 is the losing org
-                data[partial_id]["2"] = {
-                    "org_1_name": match_data[1],
-                    "org_1_games": match_data[2],
-                    "org_1_roster": [match_data[5], match_data[6]],
-                    "org_2_name": match_data[0],
-                    "org_2_games": 2,
-                    "org_2_roster": [match_data[3], match_data[4]],
-                }
+            # Get the winning and losing players without None values
+            winning_players = [p for p in [match[4], match[5], match[6]] if p is not None]
+            losing_players = [p for p in [match[7], match[8], match[9]] if p is not None]
 
-        # Look up 1v1 result from game id
-        cur.execute(
-            """SELECT winning_org, losing_org, games_won_by_loser, 
-            wp1, lp1  FROM series_log_1v1
-            WHERE game_id = ?""",
-            (f"{partial_id}1",),
-        )
-        match_data = cur.fetchone()
-        # Winning data is stored at indices 0 and 3
-        # Losing data is stored at indices 1, 2, and 4
-        if match_data is not None:
-            if ORGS[match_data[0]]["id"] > ORGS[match_data[1]]["id"]:
-                # In this case org 1 is the winning org
-                data[partial_id]["1"] = {
-                    "org_1_name": match_data[0],
-                    "org_1_games": 2,
-                    "org_1_roster": [match_data[3]],
-                    "org_2_name": match_data[1],
-                    "org_2_games": match_data[2],
-                    "org_2_roster": [match_data[4]],
+            if ORGS[match[1]]["id"] > ORGS[match[2]]["id"]:
+                # In this case the winning org is org 1
+                data[partial_id][match[0]] = {
+                    "org_1_name": match[1],
+                    "org_1_games": max_games,
+                    "org_1_roster": winning_players,
+                    "org_2_name": match[2],
+                    "org_2_games": match[3],
+                    "org_2_roster": losing_players,
                 }
             else:
-                # In this case org 1 is the losing org
-                data[partial_id]["1"] = {
-                    "org_1_name": match_data[1],
-                    "org_1_games": match_data[2],
-                    "org_1_roster": [match_data[4]],
-                    "org_2_name": match_data[0],
-                    "org_2_games": 2,
-                    "org_2_roster": [match_data[3]],
+                # In this case the winning org is org 2
+                data[partial_id][match[0]] = {
+                    "org_1_name": match[2],
+                    "org_1_games": match[3],
+                    "org_1_roster": losing_players,
+                    "org_2_name": match[1],
+                    "org_2_games": max_games,
+                    "org_2_roster": winning_players,
                 }
 
     logger.debug("Finished querying database for results")

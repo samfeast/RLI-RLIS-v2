@@ -11,6 +11,10 @@ with open("../config.json", "r") as read_file:
 
 ORGS = config["ORGS"]
 
+MAX_GAMES_3v3 = config["MAX_GAMES_3v3"]
+MAX_GAMES_2v2 = config["MAX_GAMES_2v2"]
+MAX_GAMES_1v1 = config["MAX_GAMES_1v1"]
+
 POINTS_3v3 = config["POINTS_3v3"]
 POINTS_2v2 = config["POINTS_2v2"]
 POINTS_1v1 = config["POINTS_1v1"]
@@ -181,52 +185,34 @@ def get_data(tier):
         res = cur.execute("SELECT name, org FROM players WHERE tier = ?", (tier,))
         for row in res.fetchall():
             data[row[1]]["roster"].append(row[0])
-
     # Points
     res = cur.execute(
-        """
-        SELECT winning_org, SUM(points) AS total_points 
-        FROM
-        (SELECT winning_org, ? AS points FROM series_log_3v3 WHERE tier LIKE ? 
-        UNION ALL 
-        SELECT winning_org, ? AS points FROM series_log_2v2 WHERE tier LIKE ? 
-        UNION ALL 
-        SELECT winning_org, ? AS points FROM series_log_1v1 WHERE tier LIKE ?) 
-        GROUP BY winning_org""",
-        (POINTS_3v3, tier, POINTS_2v2, tier, POINTS_1v1, tier),
+        """SELECT winning_org, SUM(CASE
+                WHEN mode = 3 THEN ?
+                WHEN mode = 2 THEN ?
+                WHEN mode = 1 THEN ? END) AS total_points 
+        FROM series_log WHERE tier LIKE ? GROUP BY winning_org""",
+        (POINTS_3v3, POINTS_2v2, POINTS_1v1, tier),
     )
     for row in res.fetchall():
         data[row[0]]["points"] = row[1]
 
     # Series won
     res = cur.execute(
-        """
-        SELECT winning_org, COUNT(winning_org) AS series_won
-        FROM
-        (SELECT winning_org FROM series_log_3v3 WHERE tier LIKE ? 
-        UNION ALL 
-        SELECT winning_org FROM series_log_2v2 WHERE tier LIKE ? 
-        UNION ALL 
-        SELECT winning_org FROM series_log_1v1 WHERE tier LIKE ?) 
-        GROUP BY winning_org;""",
-        (tier, tier, tier),
+        """SELECT winning_org, COUNT(winning_org) AS series_won
+        FROM series_log WHERE tier LIKE ?
+        GROUP BY winning_org""",
+        (tier,),
     )
-
     for row in res.fetchall():
         data[row[0]]["series_won"] = row[1]
 
     # Series lost
     res = cur.execute(
-        """
-        SELECT losing_org, COUNT(losing_org) AS series_lost
-        FROM
-        (SELECT losing_org FROM series_log_3v3 WHERE tier LIKE ? 
-        UNION ALL 
-        SELECT losing_org FROM series_log_2v2 WHERE tier LIKE ? 
-        UNION ALL 
-        SELECT losing_org FROM series_log_1v1 WHERE tier LIKE ?) 
-        GROUP BY losing_org;""",
-        (tier, tier, tier),
+        """SELECT losing_org, COUNT(losing_org) AS series_lost
+        FROM series_log WHERE tier LIKE ?
+        GROUP BY losing_org""",
+        (tier,),
     )
 
     for row in res.fetchall():
@@ -234,64 +220,42 @@ def get_data(tier):
 
     # Games won as winner
     res = cur.execute(
-        """
-        SELECT winning_org, SUM(games) AS games_won_as_winner
-        FROM
-        (SELECT winning_org, 3 AS games FROM series_log_3v3 WHERE tier LIKE ? 
-        UNION ALL 
-        SELECT winning_org, 2 AS games FROM series_log_2v2 WHERE tier LIKE ? 
-        UNION ALL 
-        SELECT winning_org, 2 AS games FROM series_log_1v1 WHERE tier LIKE ?) 
-        GROUP BY winning_org""",
-        (tier, tier, tier),
+        """SELECT winning_org, SUM(CASE
+                WHEN mode = 3 THEN ?
+                WHEN mode = 2 THEN ?
+                WHEN mode = 1 THEN ? END) AS games_won_as_winner 
+        FROM series_log WHERE tier LIKE ? GROUP BY winning_org""",
+        (MAX_GAMES_3v3, MAX_GAMES_2v2, MAX_GAMES_1v1, tier),
     )
     for row in res.fetchall():
         data[row[0]]["games_won"] = row[1]
 
     # Games lost as loser
     res = cur.execute(
-        """
-        SELECT losing_org, SUM(games) AS games_lost_as_loser
-        FROM
-        (SELECT losing_org, 3 AS games FROM series_log_3v3 WHERE tier LIKE ? 
-        UNION ALL 
-        SELECT losing_org, 2 AS games FROM series_log_2v2 WHERE tier LIKE ? 
-        UNION ALL 
-        SELECT losing_org, 2 AS games FROM series_log_1v1 WHERE tier LIKE ?) 
-        GROUP BY losing_org""",
-        (tier, tier, tier),
+        """SELECT losing_org, SUM(CASE
+                WHEN mode = 3 THEN ?
+                WHEN mode = 2 THEN ?
+                WHEN mode = 1 THEN ? END) AS games_lost_as_loser 
+        FROM series_log WHERE tier LIKE ? GROUP BY losing_org""",
+        (MAX_GAMES_3v3, MAX_GAMES_2v2, MAX_GAMES_1v1, tier),
     )
     for row in res.fetchall():
         data[row[0]]["games_lost"] = row[1]
 
     # Games won as loser
     res = cur.execute(
-        """
-        SELECT losing_org, SUM(games_won_by_loser) AS games_won_as_loser
-        FROM
-        (SELECT losing_org, games_won_by_loser FROM series_log_3v3 WHERE tier LIKE ? 
-        UNION ALL 
-        SELECT losing_org, games_won_by_loser FROM series_log_2v2 WHERE tier LIKE ? 
-        UNION ALL 
-        SELECT losing_org, games_won_by_loser FROM series_log_1v1 WHERE tier LIKE ?) 
-        GROUP BY losing_org""",
-        (tier, tier, tier),
+        """SELECT losing_org, SUM(games_won_by_loser) AS games_won_as_loser
+        FROM series_log WHERE tier LIKE ? GROUP BY losing_org""",
+        (tier,),
     )
     for row in res.fetchall():
         data[row[0]]["games_won"] += row[1]
 
     # Games lost as winner
     res = cur.execute(
-        """
-        SELECT winning_org, SUM(games_won_by_loser) AS games_lost_as_winner
-        FROM
-        (SELECT winning_org, games_won_by_loser FROM series_log_3v3 WHERE tier LIKE ? 
-        UNION ALL 
-        SELECT winning_org, games_won_by_loser FROM series_log_2v2 WHERE tier LIKE ? 
-        UNION ALL 
-        SELECT winning_org, games_won_by_loser FROM series_log_1v1 WHERE tier LIKE ?) 
-        GROUP BY winning_org""",
-        (tier, tier, tier),
+        """SELECT winning_org, SUM(games_won_by_loser) AS games_lost_as_winner
+        FROM series_log WHERE tier LIKE ? GROUP BY winning_org""",
+        (tier,),
     )
     for row in res.fetchall():
         data[row[0]]["games_lost"] += row[1]
@@ -299,7 +263,7 @@ def get_data(tier):
     # Round the points to ensure there isn't floating point inaccuracy
     # If the tier is overall, find how many teams the org has, and divide to get an average
     for org in data:
-        # If tier is '%' then the Overall standings are being generated
+        # If tier is '%' then the Overall standings are being generated, so get average points
         if tier == "%":
             # Get the number of distinct tiers where the org has at least one player registered
             res = cur.execute("SELECT COUNT (DISTINCT tier) FROM players WHERE org = ?", (org,))
@@ -324,6 +288,3 @@ def update(tiers):
         logger.info(f"Generating standings graphic for {tier}")
         data = get_data(tier)
         edit_graphic(tier, data)
-
-
-update(["Overall"])
