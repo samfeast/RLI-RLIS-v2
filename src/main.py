@@ -44,6 +44,11 @@ class RLIS_Bot(commands.Bot):
 
         # Create a connection pool for future database queries (including those in cogs)
         self.pool = await asqlite.create_pool("../data/rlis_data.db")
+
+        # Enforce referential integrity constraints
+        async with bot.pool.acquire() as con:
+            await con.execute("PRAGMA foreign_keys = ON")
+
         logger.info(f"Established connection pool with database")
 
         # Attempt to load each cog in turn
@@ -155,38 +160,6 @@ async def get_logs(interaction: discord.Interaction):
     logger.debug(f"/get_logs used by {interaction.user.id}")
     with open("../logs/rlis.log", "rb") as log_file:
         await interaction.response.send_message(file=discord.File(log_file))
-
-
-@tree.command(description="View records in specified table", guild=discord.Object(id=GUILD_ID))
-async def view_data(interaction: discord.Interaction, table: str):
-    logger.debug(f"/view_data used by {interaction.user.id}")
-
-    # Get the list of tables which exist
-    async with bot.pool.acquire() as con:
-        res = await con.execute("SELECT name FROM sqlite_master")
-        tables = [row[0] for row in await res.fetchall()]
-
-    # If the table exists, print all its records to stdout
-    if table in tables:
-        async with bot.pool.acquire() as con:
-            res = await con.execute(f"SELECT * FROM {table}")
-            records = [row for row in await res.fetchall()]
-
-        logging.info(f"Printing records for {table} table to stdout")
-
-        print(f"Contents of {table} table:")
-        for record in records:
-            record_str = ""
-            for i in range(len(record)):
-                record_str += f"{record[i]},"
-            print(record_str)
-
-        await interaction.response.send_message(
-            "Table information printed to stdout", ephemeral=True
-        )
-    else:
-        logging.error(f"Table {table} does not exist")
-        await interaction.response.send_message("Table name is not in database")
 
 
 # Start bot
