@@ -13,8 +13,8 @@ def main():
             name TEXT NOT NULL UNIQUE, 
             platform TEXT NOT NULL, 
             platform_id TEXT NOT NULL, 
-            tier TEXT NOT NULL, 
-            org TEXT NOT NULL,
+            tier TEXT, 
+            org TEXT,
             PRIMARY KEY(id, status)
             ) STRICT"""
         )
