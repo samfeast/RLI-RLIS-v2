@@ -1,16 +1,3 @@
-# f1: get stats for a specific game id
-# take in a game id
-# use game id to find players, report time, and played_previously
-# if played previously is 0, derive start time (start of day)
-# if played previously is >0, derive start time (start of day) and end time (end of day)
-# filter replays with players, start time, and end time
-# get the individual replays
-# if the guid is new, store the guid in the relevant series log, the game stats in game_stats, and the stats for each player in player_stats
-
-# f2: wider search for a specific game id
-# take a set of players, a start time, and an end time
-# follow same steps as f1
-# except, require confirmation before saving any stats
 import sqlite3
 import datetime as dt
 import utils.ballchasing_api as ballchasing_api
@@ -39,13 +26,13 @@ logging.basicConfig(
 
 
 # Get the maximum number of replays for a series of a specific mode
-def get_max_games(mode):
+def max_games_for_mode(mode):
     if mode == 3:
-        return MAX_GAMES_3v3 * 2 - 1
+        return MAX_GAMES_3v3
     if mode == 2:
-        return MAX_GAMES_2v2 * 2 - 1
+        return MAX_GAMES_2v2
     if mode == 1:
-        return MAX_GAMES_1v1 * 2 - 1
+        return MAX_GAMES_1v1
 
 
 # Store game and player stats from a specific match
@@ -266,12 +253,13 @@ def get(cur, game_id, max_games, existing_guids, start, end, players):
         store_stats(cur, match_guid, game_id, date, replay_data)
 
 
-def from_game_id(cur, game_id):
+def from_game_id(cur, game_id, start_timestamp=None, end_timestamp=None):
     # Get the mode, timestamp, played_previously, and players of the game id, and all of the
     # associated replay guids
     res = cur.execute(
         """SELECT 
             L.mode,
+            L.games_won_by_loser,
             L.timestamp, 
             L.played_previously, 
             S.guid, 
@@ -295,78 +283,35 @@ def from_game_id(cur, game_id):
         logger.warning(f"Could not find any report of game id {game_id}")
         return
 
-    max_games = get_max_games(data[0][0])
+    max_games = max_games_for_mode(data[0][0]) + data[0][1]
 
-    report_timestamp = data[0][1]
-    played_previously = data[0][2]
+    report_timestamp = data[0][2]
+    played_previously = data[0][3]
 
     # Get the replay guids already stored for this series
-    existing_guids = [game[3] for game in data if game[3] is not None]
+    existing_guids = [game[4] for game in data if game[4] is not None]
     logger.debug(f"Found {len(existing_guids)} existing replay guids for {game_id}")
 
-    player_names = list(data[0][4:10])
+    player_names = list(data[0][5:11])
 
-    # Get a datetime object of the reported unix timestamp
-    report_datetime = dt.datetime.fromtimestamp(report_timestamp, dt.timezone.utc)
+    if start_timestamp is None or end_timestamp is None:
+        # Get a datetime object of the reported unix timestamp
+        report_datetime = dt.datetime.fromtimestamp(report_timestamp, dt.timezone.utc)
 
-    # Get the start and end datetimes for the search
-    if played_previously == 0:
-        # If played previously is 0 look between the report and the start of the day
-        end = report_datetime
-        start = end.replace(hour=0, minute=0, second=0)
+        # Get the start and end datetimes for the search
+        if played_previously == 0:
+            # If played previously is 0 look between the report and the start of the day
+            end = report_datetime
+            start = end.replace(hour=0, minute=0, second=0)
+        else:
+            # If played previously is >0, look for the whole day of the series
+            end = report_datetime - dt.timedelta(days=played_previously - 1)
+            end = end.replace(hour=0, minute=0, second=0)
+            start = end - dt.timedelta(days=1)
     else:
-        # If played previously is >0, look for the whole day of the series
-        end = report_datetime - dt.timedelta(days=played_previously - 1)
-        end = end.replace(hour=0, minute=0, second=0)
-        start = end - dt.timedelta(days=1)
-
-    # Get the platform and platform id of the involved players
-    res = cur.execute(
-        "SELECT platform, platform_id FROM players WHERE name IN(?, ?, ?, ?, ?, ?)", player_names
-    )
-    players = res.fetchall()
-
-    get(cur, game_id, max_games, existing_guids, start, end, players)
-
-
-def from_game_id_with_time(cur, game_id, start_timestamp, end_timestamp):
-    # Get the mode, timestamp, played_previously, and players of the game id, and all of the
-    # associated replay guids
-    res = cur.execute(
-        """SELECT 
-            L.mode,
-            S.guid,
-            P.wp1, P.wp2, P.wp3, 
-            P.lp1, P.lp2, P.lp3 
-        FROM 
-            series_log AS L
-        LEFT OUTER JOIN 
-            game_stats AS S 
-            ON L.game_id = S.game_id
-        LEFT OUTER JOIN 
-            series_players AS P 
-            ON L.game_id = P.game_id 
-        WHERE 
-            L.game_id = ?""",
-        (game_id,),
-    )
-    data = res.fetchall()
-
-    if data == []:
-        logger.warning(f"Could not find any report of game id {game_id}")
-        return
-
-    max_games = get_max_games(data[0][0])
-
-    # Get the replay guids already stored for this series
-    existing_guids = [game[1] for game in data if game[1] is not None]
-    logger.debug(f"Found {len(existing_guids)} existing replay guids for {game_id}")
-
-    player_names = list(data[0][2:8])
-
-    # Get a datetime object of the start and end timestamps
-    start = dt.datetime.fromtimestamp(start_timestamp, dt.timezone.utc)
-    end = dt.datetime.fromtimestamp(end_timestamp, dt.timezone.utc)
+        # Get a datetime object of the start and end timestamps
+        start = dt.datetime.fromtimestamp(start_timestamp, dt.timezone.utc)
+        end = dt.datetime.fromtimestamp(end_timestamp, dt.timezone.utc)
 
     # Get the platform and platform id of the involved players
     res = cur.execute(
@@ -379,7 +324,7 @@ def from_game_id_with_time(cur, game_id, start_timestamp, end_timestamp):
 
 def from_replay_id(cur, game_id, replay_id):
     res = cur.execute(
-        """SELECT L.mode, S.guid 
+        """SELECT L.mode, L.games_won_by_loser, S.guid 
         FROM 
             series_log AS L 
         LEFT OUTER JOIN 
@@ -394,10 +339,10 @@ def from_replay_id(cur, game_id, replay_id):
         logger.warning(f"Could not find any report of game id {game_id}")
         return
 
-    max_games = get_max_games(data[0][0])
+    max_games = max_games_for_mode(data[0][0]) + data[0][1]
 
     # Get the replay guids already stored for this series
-    existing_guids = [guid[1] for guid in data]
+    existing_guids = [guid[2] for guid in data if guid[2] is not None]
     logger.debug(f"Found {len(existing_guids)} existing replay guids for {game_id}")
 
     ballchasing = ballchasing_api.API(BALLCHASING_KEY)
@@ -463,8 +408,8 @@ def main():
     # If there is no replay id but timestamps are included, search using them
     elif data[3] is not None and data[4] is not None:
         logger.info("Getting replay from game id with specified times")
-        from_game_id_with_time(cur, data[1], data[3], data[4])
-    # If only a game id is included, request that
+        from_game_id(cur, data[1], data[3], data[4])
+    # If only a game id is included, infer times
     else:
         logger.info("Getting replay from game id")
         from_game_id(cur, data[1])
@@ -473,6 +418,13 @@ def main():
     cur.execute(
         """DELETE FROM stats_stack 
         WHERE priority = (SELECT MAX(priority) FROM stats_stack)"""
+    )
+
+    # Update the number of replays stored in the series log
+    cur.execute(
+        """UPDATE series_log 
+        SET replays_stored = (SELECT COUNT(guid) FROM game_stats WHERE game_id = ?)""",
+        (data[1],),
     )
 
     con.commit()
