@@ -160,10 +160,8 @@ class Reporting(commands.Cog):
         # This is needed to maintain referential integrity
         async with self.bot.pool.acquire() as con:
             await con.execute(
-                """INSERT INTO series_log(
-                timestamp, game_id, tier, mode, winning_org, losing_org, 
-                games_won_by_loser, played_previously) 
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?)""",
+                """INSERT INTO series_log
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     round(time.time()),
                     res.game_id,
@@ -173,13 +171,12 @@ class Reporting(commands.Cog):
                     res.losing_org,
                     int(res.score[-1]),
                     res.played_previously,
+                    None,
+                    0,
                 ),
             )
             await con.execute(
-                """INSERT INTO series_players(
-                game_id,
-                wp1, wp2, wp3, 
-                lp1, lp2, lp3) 
+                """INSERT INTO series_players
                 VALUES(?, ?, ?, ?, ?, ?, ?)""",
                 (
                     res.game_id,
@@ -190,6 +187,15 @@ class Reporting(commands.Cog):
                     losing_players[1],
                     losing_players[2],
                 ),
+            )
+
+            # Push entry onto stats_stack such that the priority exceeds all present entries
+            await con.execute(
+                """INSERT INTO stats_stack(priority, game_id) 
+                VALUES (
+                (SELECT IFNULL(MAX(priority) + 1, 0) FROM stats_stack), 
+                ?)""",
+                (res.game_id,),
             )
 
     # Update standings graphics by calling the relevant synchronous function in another thread
@@ -232,7 +238,7 @@ class Reporting(commands.Cog):
         interaction: discord.Interaction,
         user: discord.User,
         name: str,
-        platform: Literal["Steam", "Epic", "PS4", "Xbox"],
+        platform: Literal["steam", "epic", "ps4", "xbox"],
         platform_id: str,
     ):
         logger.debug(f"/register_sub used by {interaction.user.id}")
