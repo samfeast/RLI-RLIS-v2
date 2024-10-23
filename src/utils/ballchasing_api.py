@@ -81,6 +81,10 @@ class API:
             logger.warning(f"Call returned {r.status_code}, slow down requests")
             return r.json()
 
+        elif r.status_code == 404:
+            logger.warning(f"Call returned {r.status_code}, replay does not exist")
+            return {}
+
         else:
             logger.error(f"Call returned {r.status_code}, failing")
             raise APIError(f"status code {r.status_code}")
