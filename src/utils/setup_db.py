@@ -36,7 +36,9 @@ def main():
             winning_org TEXT NOT NULL, 
             losing_org TEXT NOT NULL, 
             games_won_by_loser INTEGER NOT NULL, 
-            played_previously INTEGER NOT NULL
+            played_previously INTEGER NOT NULL,
+            replays_stored INTEGER,
+            published INTEGER NOT NULL
             ) STRICT"""
         )
 
@@ -63,14 +65,14 @@ def main():
             """CREATE TABLE game_stats(
             guid TEXT PRIMARY KEY, 
             url TEXT, 
-            timestamp INTEGER, 
+            timestamp INTEGER NOT NULL, 
             game_id INTEGER NOT NULL, 
             duration REAL, 
-            time_in_side_winner REAL, 
-            time_in_side_loser REAL, 
             overtime_duration REAL, 
             winner_goals INTEGER, 
-            losing_goals INTEGER, 
+            loser_goals INTEGER, 
+            time_in_side_winner REAL, 
+            time_in_side_loser REAL, 
             FOREIGN KEY(game_id) REFERENCES series_log(game_id) ON DELETE CASCADE
             ) STRICT"""
         )
@@ -79,6 +81,7 @@ def main():
            guid TEXT NOT NULL, 
            name TEXT NOT NULL, 
            game_id INTEGER NOT NULL,
+           duration REAL,
            goals INTEGER, 
            assists INTEGER, 
            saves INTEGER, 
@@ -92,9 +95,20 @@ def main():
            avg_speed REAL, 
            dist_travelled INTEGER,
            PRIMARY KEY(guid, name),
-           FOREIGN KEY(game_id) REFERENCES series_log(game_id) ON DELETE CASCADE,
+           FOREIGN KEY(guid) REFERENCES game_stats(guid) ON DELETE CASCADE,
            FOREIGN KEY(name) REFERENCES players(name)
            ) STRICT"""
+        )
+
+        cur.execute(
+            """CREATE TABLE stats_stack(
+            priority INTEGER PRIMARY KEY,
+            game_id INTEGER NOT NULL,
+            replay_id TEXT,
+            start_timestamp INTEGER,
+            end_timestamp INTEGER,
+            FOREIGN KEY(game_id) REFERENCES series_log(game_id) ON DELETE CASCADE
+            ) STRICT"""
         )
         con.commit()
 
