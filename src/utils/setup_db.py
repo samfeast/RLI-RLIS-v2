@@ -64,9 +64,11 @@ def main():
         cur.execute(
             """CREATE TABLE game_stats(
             guid TEXT PRIMARY KEY, 
-            url TEXT, 
+            url TEXT NOT NULL, 
             timestamp INTEGER NOT NULL, 
-            game_id INTEGER NOT NULL, 
+            game_id INTEGER NOT NULL,
+            winning_org TEXT NOT NULL,
+            losing_org TEXT NOT NULL,
             duration REAL, 
             overtime_duration REAL, 
             winner_goals INTEGER, 
@@ -107,6 +109,11 @@ def main():
             replay_id TEXT,
             start_timestamp INTEGER,
             end_timestamp INTEGER,
+            winning_org TEXT,
+            losing_org TEXT,
+            p_out TEXT,
+            alt_platform TEXT,
+            alt_platform_id TEXT,
             FOREIGN KEY(game_id) REFERENCES series_log(game_id) ON DELETE CASCADE
             ) STRICT"""
         )
