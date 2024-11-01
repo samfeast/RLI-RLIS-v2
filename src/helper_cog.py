@@ -104,13 +104,41 @@ class Helper(commands.Cog):
                         alt_platform_id,
                     ),
                 )
-                logger.warning("Successfully pushed to stats stack")
+                logger.info("Successfully pushed to stats stack")
                 await interaction.response.send_message(
                     f"Game id {game_id} successfully pushed to the stack"
                 )
             except sqlite3.IntegrityError:
                 logger.warning("Unable to push to stats stack due to referential integrity error")
                 await interaction.response.send_message("Game id does not exist")
+
+    @app_commands.command(description="Push data to the stats stack")
+    @app_commands.guilds(discord.Object(id=GUILD_ID))
+    async def push_everything_to_stats_stack(self, interaction: discord.Interaction):
+        logger.debug(f"/push_everything_to_stats_stack used by {interaction.user.id}")
+
+        # Add all game ids to the stats stack
+        async with self.bot.pool.acquire() as con:
+            res = await con.execute("SELECT game_id FROM series_log")
+            data = await res.fetchall()
+
+            if data == None:
+                await interaction.response.send_message("No series exist to push to the stack")
+                return
+
+            data = [d["game_id"] for d in data]
+
+            for game_id in data:
+                await con.execute(
+                    """INSERT INTO stats_stack 
+                    VALUES((SELECT IFNULL(MAX(priority) + 1, 0) FROM stats_stack), ?)""",
+                    (game_id,),
+                )
+
+            logger.info(f"Successfully pushed {len(data)} game ids to the stats stack")
+            await interaction.response.send_message(
+                f"Successfully pushed {len(data)} game ids to the stats stack"
+            )
 
     @app_commands.command(description="Delete a replay by replay id")
     @app_commands.guilds(discord.Object(id=GUILD_ID))
