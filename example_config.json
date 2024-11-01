@@ -3,6 +3,7 @@
     "BALLCHASING_KEY": "XXX",
     "PREFIX": "XXX",
     "GUILD_ID": 0,
+    "STAT_CHANNEL_ID": 0,
     "MAX_GAMES_3v3": 0,
     "MAX_GAMES_2v2": 0,
     "MAX_GAMES_1v1": 0,
