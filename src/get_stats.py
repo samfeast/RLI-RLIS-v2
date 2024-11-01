@@ -1,6 +1,7 @@
 import sqlite3
 import datetime as dt
 import utils.ballchasing_api as ballchasing_api
+from draw_stats import draw
 import json
 import time
 import logging
@@ -524,6 +525,8 @@ def main():
     )
 
     con.commit()
+
+    draw(data[1])
 
 
 if __name__ == "__main__":
