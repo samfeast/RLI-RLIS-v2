@@ -130,7 +130,7 @@ class Helper(commands.Cog):
 
             for game_id in data:
                 await con.execute(
-                    """INSERT INTO stats_stack 
+                    """INSERT INTO stats_stack(priority, game_id) 
                     VALUES((SELECT IFNULL(MAX(priority) + 1, 0) FROM stats_stack), ?)""",
                     (game_id,),
                 )
