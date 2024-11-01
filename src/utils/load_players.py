@@ -11,7 +11,7 @@ def main():
         # Enforce referential integrity constraints
         cur.execute("PRAGMA foreign_keys = ON")
 
-        cur.execute("DELETE FROM players")
+        cur.execute("DELETE FROM players WHERE status = 'main'")
 
         num_players = 0
         with open("../../data/player_info.csv", "r") as csv_file:
