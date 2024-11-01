@@ -293,7 +293,7 @@ def get_data(game_id):
 
     if series_data is None:
         logger.error("Game id not found")
-        return
+        return None
 
     # Store the tier, mode, winning org and losing org
     data["tier"] = series_data[0]
@@ -319,7 +319,7 @@ def get_data(game_id):
         data["week"] = week[0]
     else:
         logger.error("Fixture not found")
-        return
+        return None
 
     # Get the non-none player names
     winning_players = [p for p in [series_data[4], series_data[5], series_data[6]] if p != None]
@@ -400,4 +400,5 @@ def get_data(game_id):
 
 def draw(game_id):
     data = get_data(game_id)
-    draw_data(game_id, data)
+    if data is not None:
+        draw_data(game_id, data)
