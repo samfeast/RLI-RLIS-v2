@@ -10,7 +10,7 @@ def main():
             """CREATE TABLE players(
             id INTEGER, 
             status TEXT, 
-            name TEXT NOT NULL UNIQUE, 
+            name TEXT NOT NULL, 
             platform TEXT NOT NULL, 
             platform_id TEXT NOT NULL, 
             tier TEXT, 
@@ -51,13 +51,7 @@ def main():
             lp1 TEXT, 
             lp2 TEXT, 
             lp3 TEXT,
-            FOREIGN KEY(game_id) REFERENCES series_log(game_id) ON DELETE CASCADE,
-            FOREIGN KEY(wp1) REFERENCES players(name),
-            FOREIGN KEY(wp2) REFERENCES players(name),
-            FOREIGN KEY(wp3) REFERENCES players(name),
-            FOREIGN KEY(lp1) REFERENCES players(name),
-            FOREIGN KEY(lp2) REFERENCES players(name),
-            FOREIGN KEY(lp3) REFERENCES players(name)
+            FOREIGN KEY(game_id) REFERENCES series_log(game_id) ON DELETE CASCADE
             ) STRICT"""
         )
 
@@ -97,8 +91,7 @@ def main():
            avg_speed REAL, 
            dist_travelled INTEGER,
            PRIMARY KEY(guid, name),
-           FOREIGN KEY(guid) REFERENCES game_stats(guid) ON DELETE CASCADE,
-           FOREIGN KEY(name) REFERENCES players(name)
+           FOREIGN KEY(guid) REFERENCES game_stats(guid) ON DELETE CASCADE
            ) STRICT"""
         )
 
