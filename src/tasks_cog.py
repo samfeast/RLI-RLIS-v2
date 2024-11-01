@@ -106,7 +106,9 @@ class Tasks(commands.Cog):
                 value="",
                 inline=False,
             )
-            embed.add_field(name="Links:", value=", ".join(urls_fmt), inline=False)
+            # Only add the 'Links:' field if at least one link has been found
+            if len(series_urls) != 0:
+                embed.add_field(name="Links:", value=", ".join(urls_fmt), inline=False)
             embed.set_footer(text=f"Think this is wrong? Ask Res (id: {game_id})")
 
             try:
